@@ -42,3 +42,4 @@ Do not commit `.env`.
 ### Optional: GitHub Codespaces
 
 This repo also includes a `.devcontainer/devcontainer.json` file so a Codespace can install the same dependencies automatically.
+Alexander Tindlund
