@@ -13,7 +13,14 @@ parallel without drifting on schemas.
 
 ## Recommended setup
 
-Use either `venv` or Conda. The project source of truth is `pyproject.toml`.
+First, clone the repository and navigate into it:
+
+```bash
+git clone https://github.com/StanfordCS194/spr26-Team-13.git
+cd spr26-Team-13
+```
+
+All subsequent commands should be run from this repository root. Use either `venv` or Conda. The project source of truth is `pyproject.toml`.
 
 ### Option 1: venv
 
