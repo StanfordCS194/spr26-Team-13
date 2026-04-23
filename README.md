@@ -2,34 +2,55 @@
 
 Link to wiki: https://github.com/StanfordCS194/spr26-Team-13/wiki
 
-## Development environment
+This repo is now scaffolded around shared contracts so the team can work in
+parallel without drifting on schemas.
 
-This repository includes a lightweight Python development environment so any teammate can clone the repo, install dependencies, and run a starter script consistently.
+## First docs to read
 
-### Local setup
+- `docs/team-plan.md`
+- `docs/api-contracts.md`
+- `docs/architecture.md`
+
+## Recommended setup
+
+First, clone the repository and navigate into it:
 
 ```bash
 git clone https://github.com/StanfordCS194/spr26-Team-13.git
 cd spr26-Team-13
+```
 
-python3 -m venv venv
-source venv/bin/activate
+All subsequent commands should be run from this repository root. Use either `venv` or Conda. The project source of truth is `pyproject.toml`.
+
+### Option 1: venv
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run the starter app
+### Option 2: Conda
+
+```bash
+conda create -n team13 python=3.11
+conda activate team13
+pip install -r requirements.txt
+```
+
+## Run the starter app
 
 ```bash
 python src/main.py
 ```
 
-You should see:
+## Run tests
 
-```text
-Environment setup successful.
+```bash
+pytest
 ```
 
-### Environment variables
+## Environment variables
 
 Copy the example environment file before adding secrets:
 
@@ -39,17 +60,16 @@ cp .env.example .env
 
 Do not commit `.env`.
 
-### Optional: GitHub Codespaces
+## Repo map
 
-This repo also includes a `.devcontainer/devcontainer.json` file so a Codespace can install the same dependencies automatically.
-
-Callum Sherry - Added for Git Source Control Assgn
-
-Alexander Tindlund
-
-Gavin Sherry
-
-Chapman Peters
-
+- `src/contracts/`: shared schemas
+- `src/shared/`: shared constants and validators
+- `src/ingestion/`: import and program parsing
+- `src/runtime/`: live workout state
+- `src/sensing/`: rep detection and sensor adapters
+- `src/glasses/`: display demo, audio, controls
+- `src/app/`: summary, history, review flows
+- `src/export/`: external logging/export
+- `tests/fixtures/`: example payloads for team-wide testing
 
 Charlie Abowd
