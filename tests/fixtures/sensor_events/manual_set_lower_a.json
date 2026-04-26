@@ -1,0 +1,99 @@
+{
+  "description": "A Lower A day logged entirely by hand — no IMU or camera data. Use for runtime/export integration tests that must function without live sensing.",
+  "session": {
+    "session_id": "sess-manual-demo-1",
+    "program_id": "prog-lower-a",
+    "day_id": "day-lower-a",
+    "status": "completed",
+    "manual_override_enabled": true
+  },
+  "rep_events": [
+    {
+      "timestamp": "2026-04-24T18:00:05",
+      "exercise_id": "back_squat",
+      "event_type": "rep_complete",
+      "rep_index": 1,
+      "source": "manual"
+    },
+    {
+      "timestamp": "2026-04-24T18:00:08",
+      "exercise_id": "back_squat",
+      "event_type": "rep_complete",
+      "rep_index": 2,
+      "source": "manual"
+    },
+    {
+      "timestamp": "2026-04-24T18:00:11",
+      "exercise_id": "back_squat",
+      "event_type": "rep_complete",
+      "rep_index": 3,
+      "source": "manual"
+    },
+    {
+      "timestamp": "2026-04-24T18:00:14",
+      "exercise_id": "back_squat",
+      "event_type": "rep_complete",
+      "rep_index": 4,
+      "source": "manual"
+    },
+    {
+      "timestamp": "2026-04-24T18:00:17",
+      "exercise_id": "back_squat",
+      "event_type": "rep_complete",
+      "rep_index": 5,
+      "source": "manual"
+    }
+  ],
+  "completed_sets": [
+    {
+      "exercise_id": "back_squat",
+      "set_number": 1,
+      "target_reps": 5,
+      "actual_reps": 5,
+      "target_load": 185.0,
+      "actual_load": 185.0,
+      "target_rpe": 7.5,
+      "actual_rpe": 7.5,
+      "started_at": "2026-04-24T18:00:00",
+      "ended_at": "2026-04-24T18:00:20",
+      "completion_source": "manual",
+      "notes": "felt strong"
+    },
+    {
+      "exercise_id": "back_squat",
+      "set_number": 2,
+      "target_reps": 5,
+      "actual_reps": 5,
+      "target_load": 185.0,
+      "actual_load": 185.0,
+      "started_at": "2026-04-24T18:02:30",
+      "ended_at": "2026-04-24T18:02:52",
+      "completion_source": "manual"
+    },
+    {
+      "exercise_id": "back_squat",
+      "set_number": 3,
+      "target_reps": 5,
+      "actual_reps": 4,
+      "target_load": 185.0,
+      "actual_load": 185.0,
+      "target_rpe": 8.5,
+      "actual_rpe": 9.0,
+      "started_at": "2026-04-24T18:05:10",
+      "ended_at": "2026-04-24T18:05:34",
+      "completion_source": "manual",
+      "notes": "missed last rep, form broke"
+    },
+    {
+      "exercise_id": "romanian_deadlift",
+      "set_number": 1,
+      "target_reps": 8,
+      "actual_reps": 8,
+      "target_load": 135.0,
+      "actual_load": 135.0,
+      "started_at": "2026-04-24T18:10:00",
+      "ended_at": "2026-04-24T18:10:28",
+      "completion_source": "manual"
+    }
+  ]
+}
