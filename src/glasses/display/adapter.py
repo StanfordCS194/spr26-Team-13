@@ -30,11 +30,23 @@ def _build_status_panel(state: DisplayState) -> OverlayPanel:
         lines=[
             OverlayTextLine(label="Exercise", value=state.exercise_name, emphasis="strong"),
             OverlayTextLine(label="Set", value=state.set_progress),
-            OverlayTextLine(label="Reps", value=state.rep_progress or "--"),
             OverlayTextLine(label="Target", value=state.target_summary),
             OverlayTextLine(label="Next", value=state.next_action or "--", emphasis="muted"),
         ],
         placement=OverlayPlacement(anchor="top_left", margin_x=20, margin_y=20, width=420),
+    )
+
+
+def _build_rep_counter_panel(state: DisplayState) -> OverlayPanel:
+    return OverlayPanel(
+        panel_id="rep_counter",
+        title="Reps",
+        lines=[
+            OverlayTextLine(label="Count", value=state.rep_progress or "--", emphasis="strong"),
+        ],
+        placement=OverlayPlacement(anchor="bottom_right", margin_x=20, margin_y=20, width=300),
+        opacity=0.72,
+        priority=1,
     )
 
 
@@ -107,7 +119,7 @@ def display_state_to_overlay(state: DisplayState, now: datetime | None = None) -
     now = now or datetime.now()
     badges, progress_bars = _build_rest_widgets(state)
     return OverlayState(
-        panels=[_build_status_panel(state)],
+        panels=[_build_status_panel(state), _build_rep_counter_panel(state)],
         badges=badges,
         progress_bars=progress_bars,
         notifications=_build_warning_notification(state, now),

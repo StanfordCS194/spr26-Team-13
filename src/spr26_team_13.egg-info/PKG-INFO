@@ -1,0 +1,89 @@
+Metadata-Version: 2.4
+Name: spr26-team-13
+Version: 0.1.0
+Summary: AR glasses training assistant scaffold for Team 13.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic<3.0,>=2.7
+Requires-Dist: python-dotenv<2.0,>=1.0
+Requires-Dist: numpy<3.0,>=1.26
+Requires-Dist: opencv-python<5.0,>=4.9
+Requires-Dist: Pillow<12.0,>=10.0
+Provides-Extra: dev
+Requires-Dist: pytest<9.0,>=8.0; extra == "dev"
+
+# Team 13 Project
+
+Link to wiki: https://github.com/StanfordCS194/spr26-Team-13/wiki
+
+This repo is now scaffolded around shared contracts so the team can work in
+parallel without drifting on schemas.
+
+## First docs to read
+
+- `docs/team-plan.md`
+- `docs/api-contracts.md`
+- `docs/architecture.md`
+
+## Recommended setup
+
+First, clone the repository and navigate into it:
+
+```bash
+git clone https://github.com/StanfordCS194/spr26-Team-13.git
+cd spr26-Team-13
+```
+
+All subsequent commands should be run from this repository root. Use either `venv` or Conda. The project source of truth is `pyproject.toml`.
+
+### Option 1: venv
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Option 2: Conda
+
+```bash
+conda create -n team13 python=3.11
+conda activate team13
+pip install -r requirements.txt
+```
+
+## Run the starter app
+
+```bash
+python src/main.py
+```
+
+## Run tests
+
+```bash
+pytest
+```
+
+## Environment variables
+
+Copy the example environment file before adding secrets:
+
+```bash
+cp .env.example .env
+```
+
+Do not commit `.env`.
+
+## Repo map
+
+- `src/contracts/`: shared schemas
+- `src/shared/`: shared constants and validators
+- `src/ingestion/`: import and program parsing
+- `src/runtime/`: live workout state
+- `src/sensing/`: rep detection and sensor adapters
+- `src/glasses/`: display demo, audio, controls
+- `src/app/`: summary, history, review flows
+- `src/export/`: external logging/export
+- `tests/fixtures/`: example payloads for team-wide testing
+
+Charlie Abowd

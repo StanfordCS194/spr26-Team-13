@@ -26,12 +26,12 @@ BASE_RENDER_HEIGHT = 720
 BASE_PANEL_PADDING_X = 22
 BASE_PANEL_PADDING_Y = 20
 BASE_LINE_GAP = 10
-BASE_TITLE_FONT_PX = 34
-BASE_BODY_FONT_PX = 26
-BASE_BADGE_FONT_PX = 24
-BASE_PROGRESS_FONT_PX = 24
-BASE_PROGRESS_PERCENT_PX = 20
-BASE_NOTIFICATION_FONT_PX = 28
+BASE_TITLE_FONT_PX = 40
+BASE_BODY_FONT_PX = 31
+BASE_BADGE_FONT_PX = 28
+BASE_PROGRESS_FONT_PX = 28
+BASE_PROGRESS_PERCENT_PX = 24
+BASE_NOTIFICATION_FONT_PX = 32
 BASE_FONT_STROKE_PX = 2
 BADGE_BOX_OPACITY = 0.94
 NOTIFICATION_BOX_OPACITY = 0.92
@@ -68,7 +68,7 @@ def _style_text(text: str) -> str:
 
 def _ui_scale(frame) -> float:
     frame_h, frame_w = frame.shape[:2]
-    return max(min(frame_w / BASE_RENDER_WIDTH, frame_h / BASE_RENDER_HEIGHT), 1.0)
+    return max(min(frame_w / BASE_RENDER_WIDTH, frame_h / BASE_RENDER_HEIGHT), 0.5)
 
 
 def _scaled(value: int, scale: float, minimum: int = 1) -> int:
