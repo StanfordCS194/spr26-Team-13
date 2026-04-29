@@ -1,73 +1,60 @@
-# React + TypeScript + Vite
+# TrainAR · Desktop companion app
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The companion-app UI for TrainAR. For tomorrow's demo this is the **Add Program** flow only:
 
-Currently, two official plugins are available:
+1. **Entry** — drop a program file, browse via the native macOS Finder, or ⌘V a screenshot.
+2. **Parsing** — preview of the file you uploaded, with a 4-phase animated progress.
+3. **Review** — parsed program rendered as an editable-looking table.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Backend is **not** wired. The single seam for connecting a real parser later lives in
+`src/lib/parseProgram.ts`. TS types in `src/lib/types.ts` mirror the Python contracts in
+[../src/contracts/program.py](../src/contracts/program.py).
 
-## React Compiler
+## Run
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev          # http://localhost:5173 — fullscreen Chrome/Safari for the demo look
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## File layout
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+src/
+├── App.tsx                    # 'entry' | 'parsing' | 'review' state machine
+├── main.tsx                   # ReactDOM root + token/global CSS imports
+├── styles/
+│   ├── tokens.css             # design tokens (dark + lime accent)
+│   └── globals.css            # body resets + Inter / JetBrains Mono fonts
+├── components/
+│   ├── DesktopWindow.tsx      # 1240x800 dark window w/ traffic-light title bar
+│   ├── Sidebar.tsx            # PLACEHOLDER — logo, nav, recent, glasses, profile
+│   ├── ContentHeader.tsx      # title row + StepIndicator
+│   ├── StepIndicator.tsx      # Source → Parse → Review pill row
+│   └── ui/                    # Icon, Pill, Button primitives
+├── screens/
+│   ├── EntryScreen.tsx        # browse + drop + paste, all → onFileSelected(File)
+│   ├── ParsingScreen.tsx      # split: real preview | progress + findings
+│   └── ReviewScreen.tsx       # parsed program exercise table
+├── lib/
+│   ├── upload.ts              # ACCEPTED_INPUT_TYPES, classifyFile, formatBytes
+│   ├── usePasteImage.ts       # ⌘V → File hook
+│   ├── pdfPreview.ts          # pdfjs-dist page-1 → data URL
+│   ├── parseProgram.ts        # mock async parser (returns sample.ts)
+│   └── types.ts               # mirror of src/contracts/program.py
+└── data/
+    └── sample.ts              # hardcoded "Powerbuilding 5x" program
+```
+
+## Design source
+
+This UI was built from the Claude Design handoff at
+`/tmp/design2_extract/trainai/project/screens-desktop.jsx` — the four `Desktop*Screen`
+components. Tokens were copied verbatim from `tokens.css` in that bundle.
+
+Two intentional changes from the design:
+
+- The "Open from Finder" placeholder screen is replaced by the **real** macOS Finder via
+  `<input type="file">`. We don't recreate the fake Finder UI.
+- The Parsing screen's "mock paper" placeholder is replaced by a **real preview** of the
+  uploaded file (image via `URL.createObjectURL`, PDF via `pdfjs-dist`).
