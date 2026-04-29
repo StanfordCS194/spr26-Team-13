@@ -39,6 +39,7 @@ export function ReviewScreen({ onSave }: ReviewScreenProps) {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
+              whiteSpace: 'nowrap',
             }}
           >
             Save &amp; sync to glasses
