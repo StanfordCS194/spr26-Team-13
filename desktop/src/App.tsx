@@ -1,11 +1,12 @@
 // 'entry' → 'parsing' → 'review' state machine.
-// Backend is unwired: the selected File flows through to Parsing where it gets
-// previewed and faux-processed. parseProgram() is a single mockable seam in
-// lib/parseProgram.ts when real wiring lands.
+// Backend is unwired: the selected File flows through Parsing where it gets
+// previewed and faux-processed; Review reads its rows from data/sample.ts.
+// parseProgram() in lib/parseProgram.ts is the single seam for real wiring.
 
 import { useState } from 'react';
 import { EntryScreen } from './screens/EntryScreen';
 import { ParsingScreen } from './screens/ParsingScreen';
+import { ReviewScreen } from './screens/ReviewScreen';
 
 type Step = 'entry' | 'parsing' | 'review';
 
@@ -18,18 +19,20 @@ export default function App() {
     setStep('parsing');
   };
 
+  const handleSave = () => {
+    // Save & sync to glasses is a no-op for the demo. Reset for the next take.
+    setFile(null);
+    setStep('entry');
+  };
+
   if (step === 'entry') {
     return <EntryScreen onFileSelected={handleFileSelected} />;
   }
   if (step === 'parsing' && file) {
     return <ParsingScreen file={file} onDone={() => setStep('review')} />;
   }
-  // Review screen lands in the next branch.
-  return (
-    <div style={{ padding: 40, color: 'var(--text-1)' }}>
-      <h1 style={{ fontFamily: 'var(--font-sans)' }}>step: {step}</h1>
-      <p style={{ color: 'var(--text-2)' }}>Stub — Review screen lands in app/desktop-add-program-review.</p>
-      <button onClick={() => setStep('entry')}>Back to entry</button>
-    </div>
-  );
+  if (step === 'review') {
+    return <ReviewScreen onSave={handleSave} />;
+  }
+  return null;
 }
