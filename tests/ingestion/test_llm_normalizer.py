@@ -1,6 +1,14 @@
 from types import SimpleNamespace
 
-from src.contracts import SourceType, TrainingProgram, TrainingWeek, TrainingDay, ProgramExercise
+from src.contracts import (
+    BlockExecutionStyle,
+    ProgramExercise,
+    SourceType,
+    TrainingBlock,
+    TrainingDay,
+    TrainingProgram,
+    TrainingWeek,
+)
 from src.ingestion.llm_normalizer import get_llm_provider, normalize_document_with_llm
 from src.ingestion.models import ExtractedDocument
 from src.ingestion.service import normalize_extracted_program
@@ -47,12 +55,19 @@ def test_normalize_document_with_llm_returns_training_program():
                     TrainingDay(
                         day_id="day-1",
                         title="Lower",
-                        exercises=[
-                            ProgramExercise(
-                                exercise_id="back_squat",
-                                display_name="Back Squat",
-                                set_count=3,
-                                rep_target="5",
+                        blocks=[
+                            TrainingBlock(
+                                block_id="block-1",
+                                title="Block 1",
+                                execution_style=BlockExecutionStyle.ROUND_ROBIN,
+                                exercises=[
+                                    ProgramExercise(
+                                        exercise_id="back_squat",
+                                        display_name="Back Squat",
+                                        set_count=3,
+                                        rep_target="5",
+                                    )
+                                ],
                             )
                         ],
                     )
@@ -81,7 +96,10 @@ def test_normalize_document_with_llm_returns_training_program():
     assert normalized.program_id == "program-1"
     assert normalized.title == "Imported Program"
     assert normalized.source_type == SourceType.IMAGE
+    assert normalized.weeks[0].days[0].blocks[0].title == "Block 1"
+    assert normalized.weeks[0].days[0].exercises[0].exercise_id == "back_squat"
     assert fake_client.beta.chat.completions.last_kwargs["model"] == "gemini-2.5-flash"
+    assert "Parsed structured JSON" not in fake_client.beta.chat.completions.last_kwargs["messages"][1]["content"]
 
 
 def test_normalize_extracted_program_uses_llm_when_available(monkeypatch):

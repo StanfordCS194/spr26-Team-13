@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -74,7 +73,6 @@ def _ingest_uploaded_file(upload, user_id: str) -> tuple[TrainingProgram, dict[s
         )
         return program, {
             "markdown": extracted.structured_markdown or extracted.text,
-            "json": None if extracted.structured_data is None else json.dumps(extracted.structured_data, indent=2),
             "normalization_mode": normalization_mode,
         }
     finally:

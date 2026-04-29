@@ -177,6 +177,28 @@
         border-top: 1px solid rgba(78, 63, 42, 0.12);
       }
 
+      .block-card {
+        margin-top: 14px;
+        padding: 14px;
+        border-radius: 16px;
+        background: rgba(248, 241, 230, 0.88);
+        border: 1px solid rgba(78, 63, 42, 0.1);
+      }
+
+      .block-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+      }
+
+      .block-style {
+        color: var(--muted);
+        font-size: 0.88rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
       .exercise-row:first-of-type {
         border-top: 0;
         padding-top: 0;
@@ -280,24 +302,83 @@
                 {% for day in week.days %}
                   <section class="day-card">
                     <div class="exercise-name">Week {{ week.week_number }} · {{ day.title }}</div>
-                    {% for exercise in day.exercises %}
-                      <div class="exercise-row">
-                        <div class="exercise-name">{{ exercise.display_name }}</div>
-                        <div class="exercise-meta">
-                          {{ exercise.set_count }} sets
-                          {% if exercise.rep_target %} · reps {{ exercise.rep_target }}{% endif %}
-                          {% if exercise.load_target %} · load {{ exercise.load_target }}{% endif %}
-                          {% if exercise.rpe_target %} · RPE {{ exercise.rpe_target }}{% endif %}
-                          {% if exercise.rest_seconds %} · rest {{ exercise.rest_seconds }}s{% endif %}
+                    {% if day.blocks %}
+                      {% for block in day.blocks %}
+                        <div class="block-card">
+                          <div class="block-header">
+                            <div class="exercise-name">{{ block.title }}</div>
+                            <div class="block-style">{{ block.execution_style.value.replace("_", " ") }}</div>
+                          </div>
+                          {% if block.notes %}
+                            <div class="exercise-meta">notes: {{ block.notes }}</div>
+                          {% endif %}
+                          {% for exercise in block.exercises %}
+                            <div class="exercise-row">
+                              <div class="exercise-name">{{ exercise.display_name }}</div>
+                              <div class="exercise-meta">
+                                {{ exercise.set_count }} sets
+                                {% if exercise.rep_target %} · reps {{ exercise.rep_target }}{% endif %}
+                                {% if exercise.load_target %} · load {{ exercise.load_target }}{% endif %}
+                                {% if exercise.rpe_target %} · RPE {{ exercise.rpe_target }}{% endif %}
+                                {% if exercise.rest_seconds %} · rest {{ exercise.rest_seconds }}s{% endif %}
+                              </div>
+                              {% if exercise.notes %}
+                                <div class="exercise-meta">notes: {{ exercise.notes }}</div>
+                              {% endif %}
+                              {% if exercise.ambiguity_flags %}
+                                <div class="exercise-meta">flags: {{ exercise.ambiguity_flags | join(", ") }}</div>
+                              {% endif %}
+                            </div>
+                          {% endfor %}
                         </div>
-                        {% if exercise.notes %}
-                          <div class="exercise-meta">notes: {{ exercise.notes }}</div>
-                        {% endif %}
-                        {% if exercise.ambiguity_flags %}
-                          <div class="exercise-meta">flags: {{ exercise.ambiguity_flags | join(", ") }}</div>
-                        {% endif %}
-                      </div>
-                    {% endfor %}
+                      {% endfor %}
+                      {% if day.ungrouped_exercises %}
+                        <div class="block-card">
+                          <div class="block-header">
+                            <div class="exercise-name">Unassigned Section</div>
+                            <div class="block-style">sequential</div>
+                          </div>
+                          <div class="exercise-meta">Exercises preserved from the parsed day but not assigned to a named block.</div>
+                          {% for exercise in day.ungrouped_exercises %}
+                            <div class="exercise-row">
+                              <div class="exercise-name">{{ exercise.display_name }}</div>
+                              <div class="exercise-meta">
+                                {{ exercise.set_count }} sets
+                                {% if exercise.rep_target %} · reps {{ exercise.rep_target }}{% endif %}
+                                {% if exercise.load_target %} · load {{ exercise.load_target }}{% endif %}
+                                {% if exercise.rpe_target %} · RPE {{ exercise.rpe_target }}{% endif %}
+                                {% if exercise.rest_seconds %} · rest {{ exercise.rest_seconds }}s{% endif %}
+                              </div>
+                              {% if exercise.notes %}
+                                <div class="exercise-meta">notes: {{ exercise.notes }}</div>
+                              {% endif %}
+                              {% if exercise.ambiguity_flags %}
+                                <div class="exercise-meta">flags: {{ exercise.ambiguity_flags | join(", ") }}</div>
+                              {% endif %}
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    {% else %}
+                      {% for exercise in day.exercises %}
+                        <div class="exercise-row">
+                          <div class="exercise-name">{{ exercise.display_name }}</div>
+                          <div class="exercise-meta">
+                            {{ exercise.set_count }} sets
+                            {% if exercise.rep_target %} · reps {{ exercise.rep_target }}{% endif %}
+                            {% if exercise.load_target %} · load {{ exercise.load_target }}{% endif %}
+                            {% if exercise.rpe_target %} · RPE {{ exercise.rpe_target }}{% endif %}
+                            {% if exercise.rest_seconds %} · rest {{ exercise.rest_seconds }}s{% endif %}
+                          </div>
+                          {% if exercise.notes %}
+                            <div class="exercise-meta">notes: {{ exercise.notes }}</div>
+                          {% endif %}
+                          {% if exercise.ambiguity_flags %}
+                            <div class="exercise-meta">flags: {{ exercise.ambiguity_flags | join(", ") }}</div>
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    {% endif %}
                   </section>
                 {% endfor %}
               {% endfor %}

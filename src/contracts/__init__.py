@@ -1,14 +1,23 @@
 """Canonical shared contracts used across subsystems."""
 
 from .coaching import CoachingCue
-from .common import CompletionSource, CueModality, DetectionSource, SessionStatus, SourceType, TriggerType
+from .common import (
+    BlockExecutionStyle,
+    CompletionSource,
+    CueModality,
+    DetectionSource,
+    SessionStatus,
+    SourceType,
+    TriggerType,
+)
 from .device import DeviceCapabilities, EquipmentItem
 from .events import DisplayState, RepEvent
 from .logging import ExportRecord, WorkoutSummary
-from .program import ProgramExercise, TrainingDay, TrainingProgram, TrainingWeek
+from .program import ProgramExercise, TrainingBlock, TrainingDay, TrainingProgram, TrainingWeek
 from .session import CompletedSet, WorkoutSession
 
 __all__ = [
+    "BlockExecutionStyle",
     "CoachingCue",
     "CompletedSet",
     "CompletionSource",
@@ -22,6 +31,7 @@ __all__ = [
     "RepEvent",
     "SessionStatus",
     "SourceType",
+    "TrainingBlock",
     "TrainingDay",
     "TrainingProgram",
     "TrainingWeek",

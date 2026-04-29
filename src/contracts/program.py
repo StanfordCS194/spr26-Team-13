@@ -2,9 +2,9 @@
 
 from typing import List, Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from .common import ContractModel, SourceType
+from .common import BlockExecutionStyle, ContractModel, SourceType
 
 
 class ProgramExercise(ContractModel):
@@ -19,11 +19,62 @@ class ProgramExercise(ContractModel):
     ambiguity_flags: List[str] = Field(default_factory=list)
 
 
+class TrainingBlock(ContractModel):
+    block_id: str
+    title: str
+    execution_style: BlockExecutionStyle = BlockExecutionStyle.SEQUENTIAL
+    exercises: List[ProgramExercise] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+
 class TrainingDay(ContractModel):
     day_id: str
     title: str
+    blocks: List[TrainingBlock] = Field(default_factory=list)
     exercises: List[ProgramExercise] = Field(default_factory=list)
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _sync_flat_exercises(self) -> "TrainingDay":
+        """Keep a flat exercise list available for older consumers."""
+
+        if self.blocks and not self.exercises:
+            self.exercises = [exercise for block in self.blocks for exercise in block.exercises]
+        return self
+
+    @property
+    def ungrouped_exercises(self) -> List[ProgramExercise]:
+        """Return exercises not already represented inside a named block."""
+
+        if not self.blocks:
+            return list(self.exercises)
+
+        blocked_keys = [self._exercise_key(exercise) for block in self.blocks for exercise in block.exercises]
+        remaining_keys = list(blocked_keys)
+        ungrouped: List[ProgramExercise] = []
+
+        for exercise in self.exercises:
+            exercise_key = self._exercise_key(exercise)
+            if exercise_key in remaining_keys:
+                remaining_keys.remove(exercise_key)
+                continue
+            ungrouped.append(exercise)
+
+        return ungrouped
+
+    @staticmethod
+    def _exercise_key(exercise: ProgramExercise) -> tuple:
+        return (
+            exercise.exercise_id,
+            exercise.display_name,
+            exercise.set_count,
+            exercise.rep_target,
+            exercise.load_target,
+            exercise.rpe_target,
+            exercise.rest_seconds,
+            exercise.notes,
+            tuple(exercise.ambiguity_flags),
+        )
 
 
 class TrainingWeek(ContractModel):
