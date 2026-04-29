@@ -1,0 +1,111 @@
+/* TrainAR design tokens — ported from /tmp/design2_extract/trainai/project/tokens.css */
+:root {
+  /* Surfaces */
+  --bg: #0A0A0A;
+  --surface-1: #141414;
+  --surface-2: #1C1C1C;
+  --surface-3: #242424;
+  --hairline: rgba(255,255,255,0.07);
+  --hairline-2: rgba(255,255,255,0.12);
+
+  /* Text */
+  --text-1: #F5F5F5;
+  --text-2: rgba(245,245,245,0.65);
+  --text-3: rgba(245,245,245,0.42);
+  --text-dim: rgba(245,245,245,0.28);
+
+  /* Accent — electric lime */
+  --accent: #C5F23E;
+  --accent-soft: rgba(197, 242, 62, 0.14);
+  --accent-glow: 0 0 32px rgba(197, 242, 62, 0.35);
+  --on-accent: #0A0A0A;
+
+  /* Special — green hero card */
+  --hero-bg: linear-gradient(165deg, #1B2410 0%, #141414 60%);
+  --hero-border: rgba(197, 242, 62, 0.18);
+  --hero-glow: rgba(197, 242, 62, 0.25);
+
+  /* Subtle white-tint overlays used inside dark cards & on dim chips */
+  --overlay-1: rgba(255,255,255,0.05);
+  --overlay-2: rgba(255,255,255,0.06);
+  --overlay-3: rgba(255,255,255,0.08);
+
+  /* Frame color for the desktop window surround */
+  --frame-bg: #0A0A0A;
+
+  /* Semantic */
+  --danger: #FF6B5C;
+  --warn: #FFC462;
+
+  /* Type */
+  --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: 'Inter', -apple-system, system-ui, sans-serif;
+
+  /* Radii */
+  --r-pill: 9999px;
+  --r-card: 20px;
+  --r-card-lg: 28px;
+  --r-chip: 12px;
+}
+
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* striped placeholder */
+.stripe-placeholder {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255,255,255,0.04) 0 6px,
+    rgba(255,255,255,0.07) 6px 12px
+  );
+}
+
+/* Subtle press */
+.press { transition: transform 120ms ease, opacity 120ms ease; }
+.press:active { transform: scale(0.97); opacity: 0.85; }
+
+/* Soft fade in */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 380ms cubic-bezier(.2,.7,.2,1) both; }
+
+/* Pulse for glasses status */
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
+
+/* Spinner ring */
+@keyframes spinRing {
+  to { transform: rotate(360deg); }
+}
+.spin-ring { animation: spinRing 1.4s linear infinite; }
+
+/* Shimmer for parsing */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+/* progress arc */
+.glow-edge {
+  box-shadow: 0 0 0 1px rgba(197, 242, 62, 0.6), 0 0 24px rgba(197, 242, 62, 0.35);
+}
+
+/* OCR scan sweep */
+@keyframes scanSweep {
+  0% { top: 0%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.scan-sweep { animation: scanSweep 2.4s ease-in-out infinite; }
