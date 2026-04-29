@@ -2,3 +2,9 @@ venv/
 __pycache__/
 .env
 .DS_Store
+
+# Desktop companion app (Vite + React)
+desktop/node_modules/
+desktop/dist/
+desktop/.vite/
+desktop/*.log
