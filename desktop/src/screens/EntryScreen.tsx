@@ -9,6 +9,7 @@ import { ContentHeader } from '../components/ContentHeader';
 import { DesktopWindow } from '../components/DesktopWindow';
 import { Icon } from '../components/ui/Icon';
 import { ACCEPTED_INPUT_TYPES } from '../lib/upload';
+import { usePasteImage } from '../lib/usePasteImage';
 
 interface EntryScreenProps {
   onFileSelected: (file: File) => void;
@@ -17,6 +18,9 @@ interface EntryScreenProps {
 export function EntryScreen({ onFileSelected }: EntryScreenProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // ⌘V anywhere on the page — pastes a screenshot from clipboard.
+  usePasteImage(onFileSelected);
 
   const handleBrowse = () => inputRef.current?.click();
 
