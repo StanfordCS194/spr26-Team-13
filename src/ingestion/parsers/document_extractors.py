@@ -30,10 +30,15 @@ DOCLING_SUFFIXES = {
 }
 
 _CONVERTER: DocumentConverter | None = None
-MAX_DOCLING_IMAGE_PIXELS = 36_000_000
+MAX_DOCLING_IMAGE_PIXELS = 12_000_000
+MAX_DOCLING_IMAGE_LONG_EDGE = 2400
 
 
-def extract_document_text(path: str | Path) -> ExtractedDocument:
+def extract_document_text(
+    path: str | Path,
+    *,
+    include_structured_data: bool = False,
+) -> ExtractedDocument:
     """Extract program text from a supported file path."""
 
     file_path = Path(path)
@@ -46,12 +51,12 @@ def extract_document_text(path: str | Path) -> ExtractedDocument:
         )
 
     if suffix in DOCLING_SUFFIXES:
-        return _extract_with_docling(file_path)
+        return _extract_with_docling(file_path, include_structured_data=include_structured_data)
 
     raise ValueError(f"Unsupported program source: {file_path.suffix or '<no extension>'}")
 
 
-def _extract_with_docling(path: Path) -> ExtractedDocument:
+def _extract_with_docling(path: Path, *, include_structured_data: bool) -> ExtractedDocument:
     converter = _get_converter()
     source_path, cleanup_path = _prepare_docling_source(path)
     try:
@@ -62,7 +67,7 @@ def _extract_with_docling(path: Path) -> ExtractedDocument:
 
     document = result.document
     markdown = document.export_to_markdown()
-    structured_data = document.export_to_dict()
+    structured_data = document.export_to_dict() if include_structured_data else None
     extraction_notes = ["docling_used"]
     if path.suffix.lower() in IMAGE_SUFFIXES:
         extraction_notes.append("docling_image_parse")
@@ -92,20 +97,28 @@ def _prepare_docling_source(path: Path) -> tuple[Path, Path | None]:
     with Image.open(path) as image:
         prepared = image.convert("RGB")
         pixel_count = prepared.width * prepared.height
-        if pixel_count > MAX_DOCLING_IMAGE_PIXELS:
-            scale = (MAX_DOCLING_IMAGE_PIXELS / pixel_count) ** 0.5
+        long_edge = max(prepared.width, prepared.height)
+        if pixel_count > MAX_DOCLING_IMAGE_PIXELS or long_edge > MAX_DOCLING_IMAGE_LONG_EDGE:
+            pixel_scale = (MAX_DOCLING_IMAGE_PIXELS / pixel_count) ** 0.5 if pixel_count > MAX_DOCLING_IMAGE_PIXELS else 1.0
+            edge_scale = MAX_DOCLING_IMAGE_LONG_EDGE / long_edge if long_edge > MAX_DOCLING_IMAGE_LONG_EDGE else 1.0
+            scale = min(pixel_scale, edge_scale)
             resized_dimensions = (
                 max(1, int(prepared.width * scale)),
                 max(1, int(prepared.height * scale)),
             )
             prepared = prepared.resize(resized_dimensions, Image.Resampling.LANCZOS)
 
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"} and pixel_count <= MAX_DOCLING_IMAGE_PIXELS:
+        resized_pixel_count = prepared.width * prepared.height
+        if (
+            path.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
+            and resized_pixel_count == pixel_count
+            and long_edge <= MAX_DOCLING_IMAGE_LONG_EDGE
+        ):
             return path, None
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir="/tmp") as handle:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg", dir="/tmp") as handle:
             temp_path = Path(handle.name)
-        prepared.save(temp_path, format="PNG")
+        prepared.save(temp_path, format="JPEG", quality=88, optimize=True)
     return temp_path, temp_path
 
 

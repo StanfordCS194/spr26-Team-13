@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 
-from src.ingestion.models import ParsedDay, ParsedExercise, ParsedProgram, ParsedWeek
+from src.contracts import BlockExecutionStyle
+from src.ingestion.models import ParsedBlock, ParsedDay, ParsedExercise, ParsedProgram, ParsedWeek
 
 
 TITLE_PATTERN = re.compile(r"^(?:program|title)\s*:\s*(?P<title>.+)$", re.IGNORECASE)
@@ -12,6 +13,14 @@ WEEK_PATTERN = re.compile(r"^week\s+(?P<number>\d+)(?:\s*[:\-]\s*(?P<title>.+))?
 DAY_PATTERN = re.compile(
     r"^(?:(?:day\s*(?P<day_number>\d+))|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))"
     r"(?:\s*[:\-]\s*(?P<title>.+))?$",
+    re.IGNORECASE,
+)
+BLOCK_PATTERN = re.compile(
+    r"^(?P<kind>block|superset|circuit)\s*(?P<label>[\w#-]+)?(?:\s*[:\-]\s*(?P<title>.+))?$",
+    re.IGNORECASE,
+)
+SECTION_PATTERN = re.compile(
+    r"^(?P<title>team prep|warm[\s-]?up|prep|activation|mobility|cooldown|finisher|accessory(?: work)?|core)$",
     re.IGNORECASE,
 )
 SETS_REPS_PATTERN = re.compile(
@@ -53,11 +62,13 @@ def parse_program_text(
     parsed_program = ParsedProgram(title=fallback_title)
     current_week: ParsedWeek | None = None
     current_day: ParsedDay | None = None
+    current_block: ParsedBlock | None = None
     exercise_lines = 0
     parsed_exercises = 0
     ambiguity_count = 0
 
     pending_name_lines: list[str] = []
+    last_header_only_exercise: ParsedExercise | None = None
 
     for raw_line in text.splitlines():
         line = _clean_line(raw_line)
@@ -68,23 +79,26 @@ def parse_program_text(
 
         title_match = TITLE_PATTERN.match(line)
         if title_match:
-            _flush_pending_name_lines(current_day, pending_name_lines)
+            _flush_pending_name_lines(current_day, current_block, pending_name_lines)
             parsed_program.title = title_match.group("title").strip()
+            last_header_only_exercise = None
             continue
 
         week_match = WEEK_PATTERN.match(line)
         if week_match:
-            _flush_pending_name_lines(current_day, pending_name_lines)
+            _flush_pending_name_lines(current_day, current_block, pending_name_lines)
             week_number = int(week_match.group("number"))
             current_week = ParsedWeek(week_number=week_number)
             parsed_program.weeks.append(current_week)
             current_day = None
+            current_block = None
             pending_name_lines = []
+            last_header_only_exercise = None
             continue
 
         day_match = DAY_PATTERN.match(line)
         if day_match:
-            _flush_pending_name_lines(current_day, pending_name_lines)
+            _flush_pending_name_lines(current_day, current_block, pending_name_lines)
             current_week = current_week or _append_default_week(parsed_program)
             title = day_match.group("title")
             if title:
@@ -95,7 +109,38 @@ def parse_program_text(
                 day_title = line.strip()
             current_day = ParsedDay(title=day_title)
             current_week.days.append(current_day)
+            current_block = None
             pending_name_lines = []
+            last_header_only_exercise = None
+            continue
+
+        block_match = BLOCK_PATTERN.match(line)
+        if block_match:
+            _flush_pending_name_lines(current_day, current_block, pending_name_lines)
+            current_week = current_week or _append_default_week(parsed_program)
+            current_day = current_day or _append_default_day(current_week)
+            current_block = ParsedBlock(
+                title=_build_block_title(block_match),
+                execution_style=_infer_block_execution_style(block_match.group("kind")),
+            )
+            current_day.blocks.append(current_block)
+            _forward_attach_recent_exercise(current_day, current_block, last_header_only_exercise)
+            pending_name_lines = []
+            last_header_only_exercise = None
+            continue
+
+        section_match = SECTION_PATTERN.match(line)
+        if section_match:
+            _flush_pending_name_lines(current_day, current_block, pending_name_lines)
+            current_week = current_week or _append_default_week(parsed_program)
+            current_day = current_day or _append_default_day(current_week)
+            current_block = ParsedBlock(
+                title=_format_section_title(section_match.group("title")),
+                execution_style=_infer_section_execution_style(section_match.group("title")),
+            )
+            current_day.blocks.append(current_block)
+            pending_name_lines = []
+            last_header_only_exercise = None
             continue
 
         exercise_lines += 1
@@ -124,9 +169,10 @@ def parse_program_text(
         pending_name_lines = []
         parsed_exercises += 1
         ambiguity_count += len(exercise.ambiguity_flags)
-        current_day.exercises.append(exercise)
+        _append_exercise(current_day, current_block, exercise)
+        last_header_only_exercise = exercise if _is_forward_attach_candidate(exercise) else None
 
-    _flush_pending_name_lines(current_day, pending_name_lines)
+    _flush_pending_name_lines(current_day, current_block, pending_name_lines)
 
     if parsed_exercises == 0:
         raise ValueError("No exercises could be parsed from the provided input.")
@@ -243,25 +289,99 @@ def _is_prescription_only_line(line: str) -> bool:
     )
 
 
-def _flush_pending_name_lines(current_day: ParsedDay | None, pending_name_lines: list[str]) -> None:
+def _flush_pending_name_lines(
+    current_day: ParsedDay | None,
+    current_block: ParsedBlock | None,
+    pending_name_lines: list[str],
+) -> None:
     if current_day is None or not pending_name_lines:
         pending_name_lines.clear()
         return
 
     combined_name = " ".join(pending_name_lines).strip()
     if combined_name:
-        current_day.exercises.append(
+        _append_exercise(
+            current_day,
+            current_block,
             ParsedExercise(
                 raw_name=combined_name,
                 set_count=1,
                 ambiguity_flags=["missing_prescription"],
-            )
+            ),
         )
     pending_name_lines.clear()
 
 
+def _append_exercise(current_day: ParsedDay, current_block: ParsedBlock | None, exercise: ParsedExercise) -> None:
+    current_day.exercises.append(exercise)
+    if current_block is not None:
+        current_block.exercises.append(exercise)
+
+
+def _forward_attach_recent_exercise(
+    current_day: ParsedDay,
+    current_block: ParsedBlock,
+    exercise: ParsedExercise | None,
+) -> None:
+    if exercise is None or exercise in current_block.exercises:
+        return
+
+    for prior_block in reversed(current_day.blocks[:-1]):
+        if exercise in prior_block.exercises:
+            prior_block.exercises.remove(exercise)
+            break
+
+    current_block.exercises.insert(0, exercise)
+
+
 def _append_note(existing: str | None, addition: str) -> str:
     return addition if not existing else f"{existing}; {addition}"
+
+
+def _build_block_title(block_match: re.Match[str]) -> str:
+    kind = block_match.group("kind").strip()
+    label = block_match.group("label")
+    title = block_match.group("title")
+    if title:
+        return title.strip()
+    if label:
+        return f"{kind.title()} {label.strip()}".strip()
+    return kind.title()
+
+
+def _infer_block_execution_style(kind: str) -> BlockExecutionStyle:
+    normalized = kind.strip().lower()
+    if normalized == "superset":
+        return BlockExecutionStyle.SUPERSET
+    if normalized == "circuit":
+        return BlockExecutionStyle.CIRCUIT
+    return BlockExecutionStyle.ROUND_ROBIN
+
+
+def _format_section_title(value: str) -> str:
+    normalized = re.sub(r"\s+", " ", value.strip())
+    if normalized.lower() == "warmup":
+        return "Warm Up"
+    if normalized.lower() == "team prep":
+        return "Team Prep"
+    return normalized.title()
+
+
+def _infer_section_execution_style(title: str) -> BlockExecutionStyle:
+    normalized = title.strip().lower()
+    if normalized in {"team prep", "warm up", "warm-up", "warmup", "prep", "activation", "mobility"}:
+        return BlockExecutionStyle.ROUND_ROBIN
+    return BlockExecutionStyle.SEQUENTIAL
+
+
+def _is_forward_attach_candidate(exercise: ParsedExercise) -> bool:
+    return (
+        exercise.rep_target is None
+        and exercise.load_target is None
+        and exercise.rpe_target is None
+        and exercise.rest_seconds is None
+        and "missing_prescription" in exercise.ambiguity_flags
+    )
 
 
 def _estimate_confidence(*, total_exercise_lines: int, parsed_exercises: int, ambiguity_count: int) -> float:

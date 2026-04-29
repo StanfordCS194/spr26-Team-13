@@ -19,6 +19,13 @@ class SourceType(str, Enum):
     GENERATED = "generated"
 
 
+class BlockExecutionStyle(str, Enum):
+    SEQUENTIAL = "sequential"
+    ROUND_ROBIN = "round_robin"
+    SUPERSET = "superset"
+    CIRCUIT = "circuit"
+
+
 class SessionStatus(str, Enum):
     PLANNED = "planned"
     IN_PROGRESS = "in_progress"

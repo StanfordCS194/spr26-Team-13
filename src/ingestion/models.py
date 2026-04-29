@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from src.contracts import SourceType
+from src.contracts import BlockExecutionStyle, SourceType
 
 
 @dataclass(slots=True)
@@ -27,8 +27,17 @@ class ParsedExercise:
 
 
 @dataclass(slots=True)
+class ParsedBlock:
+    title: str
+    execution_style: BlockExecutionStyle | None = None
+    exercises: list[ParsedExercise] = field(default_factory=list)
+    notes: str | None = None
+
+
+@dataclass(slots=True)
 class ParsedDay:
     title: str
+    blocks: list[ParsedBlock] = field(default_factory=list)
     exercises: list[ParsedExercise] = field(default_factory=list)
     notes: str | None = None
 

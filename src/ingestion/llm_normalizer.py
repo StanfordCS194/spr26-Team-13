@@ -164,6 +164,14 @@ def _build_instructions() -> str:
     return (
         "Convert the provided parsed workout document into the exact TrainingProgram schema. "
         "Preserve explicit document structure such as week/day boundaries when present. "
+        "Preserve grouped sections such as Block 1, Block 2, supersets, and circuits by populating TrainingDay.blocks. "
+        "Use block execution_style values of sequential, round_robin, superset, or circuit. "
+        "Do not drop exercises from the parsed document. Every exercise line should appear either inside a named block "
+        "or in the flat day exercise list. If exercises appear before the first explicit Block heading, preserve their "
+        "section title when present, such as Team Prep; otherwise place them in an initial block titled Block 0. "
+        "If an exercise title appears immediately before a block header and the reps, intensity, RPE, duration, or notes "
+        "that follow clearly belong to that exercise, attach that exercise to the following block rather than leaving it "
+        "in Team Prep or Block 0. "
         "If the document has Day sections but no week sections, place all days into week 1. "
         "Do not invent exercises, loads, reps, or RPE values that are not supported by the parsed document. "
         "Keep unresolved ambiguity in ambiguity_flags and set needs_user_confirmation to true when information is incomplete or uncertain. "
@@ -193,9 +201,7 @@ def _build_input(
         "Metadata:\n"
         f"{json.dumps(metadata, indent=2)}\n\n"
         "Parsed document markdown:\n"
-        f"{document.structured_markdown or document.text}\n\n"
-        "Parsed structured JSON:\n"
-        f"{json.dumps(document.structured_data, indent=2) if document.structured_data is not None else 'null'}"
+        f"{document.structured_markdown or document.text}"
     )
 
 
