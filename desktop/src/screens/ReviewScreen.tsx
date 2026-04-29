@@ -10,7 +10,7 @@ interface ReviewScreenProps {
   onSave: () => void;
 }
 
-export function ReviewScreen(_props: ReviewScreenProps) {
+export function ReviewScreen({ onSave }: ReviewScreenProps) {
   const day = sampleProgram.weeks[0]?.days[0];
 
   return (
@@ -19,6 +19,30 @@ export function ReviewScreen(_props: ReviewScreenProps) {
         step={2}
         title="Review parsed program"
         subtitle="Edit anything that looks off, then send to your glasses."
+        right={
+          <button
+            type="button"
+            onClick={onSave}
+            className="press"
+            style={{
+              background: 'var(--accent)',
+              color: 'var(--on-accent)',
+              border: 'none',
+              padding: '10px 18px',
+              borderRadius: 9999,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            Save &amp; sync to glasses
+            <Icon name="arrow-right" size={14} stroke="var(--on-accent)" strokeWidth={2.2} />
+          </button>
+        }
       />
       <div style={{ padding: 36 }}>
         {/* Day header */}
