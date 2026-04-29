@@ -59,7 +59,7 @@ DEMO_EXERCISES = (
         next_action="Keep back straight and core engaged",
         rep_goal=9,
         rep_label="each arm",
-        rep_start_seconds=14.0,
+        rep_start_seconds=12.0,
         rep_end_seconds=42.0,
         rest_seconds=9,
     ),
@@ -70,7 +70,7 @@ DEMO_EXERCISES = (
         next_action="Drive through the bar path",
         rep_goal=10,
         rep_label="reps",
-        rep_start_seconds=58.0,
+        rep_start_seconds=56.0,
         rep_end_seconds=69.0,
         rest_seconds=16,
     ),
@@ -105,6 +105,16 @@ def _parse_args():
         type=float,
         default=1.0,
         help="Video playback multiplier. Use values like 4.0 for exported slow-motion clips.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path to save the rendered overlay video as an MP4.",
+    )
+    parser.add_argument(
+        "--no-preview",
+        action="store_true",
+        help="Render without opening a preview window. Useful with --output.",
     )
     return parser.parse_args()
 
@@ -244,16 +254,21 @@ def main():
     args = _parse_args()
     if args.playback_speed <= 0:
         raise ValueError("--playback-speed must be greater than 0")
+    if args.output and args.loop:
+        raise ValueError("--output cannot be used with --loop because export would never finish")
 
     controller = DemoOverlayController()
     renderer = OverlayRenderer()
     using_video = args.video is not None
     video_path = args.video.expanduser() if args.video else None
+    output_path = args.output.expanduser() if args.output else None
+    preview_enabled = not args.no_preview
 
     if using_video and not video_path.exists():
         raise FileNotFoundError(f"Demo video not found: {video_path}")
 
     cap = cv2.VideoCapture(str(video_path) if using_video else 0)
+    source_fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_CAMERA_FPS
     if using_video:
         video_started_at = perf_counter()
         frame_delay_ms = 1
@@ -267,40 +282,70 @@ def main():
     if not cap.isOpened():
         raise RuntimeError("Could not open video source")
 
-    while True:
-        if using_video:
-            target_video_seconds = (perf_counter() - video_started_at) * args.playback_speed
-            current_video_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-            if current_video_seconds < target_video_seconds - 0.05:
-                cap.set(cv2.CAP_PROP_POS_MSEC, target_video_seconds * 1000.0)
+    writer = None
+    try:
+        while True:
+            realtime_playback = using_video and preview_enabled
+            if realtime_playback:
+                target_video_seconds = (
+                    perf_counter() - video_started_at
+                ) * args.playback_speed
+                current_video_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                if current_video_seconds < target_video_seconds - 0.05:
+                    cap.set(cv2.CAP_PROP_POS_MSEC, target_video_seconds * 1000.0)
 
-        ret, frame = cap.read()
-        if not ret:
-            if using_video and args.loop:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                video_started_at = perf_counter()
-                continue
-            break
+            ret, frame = cap.read()
+            if not ret:
+                if using_video and args.loop:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    video_started_at = perf_counter()
+                    continue
+                break
 
-        elapsed_seconds = None
-        if using_video:
-            elapsed_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            elapsed_seconds = None
+            if using_video:
+                elapsed_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
 
-        overlay_state = controller.build_state(elapsed_seconds=elapsed_seconds)
-        frame = renderer.render(frame, overlay_state)
-        cv2.imshow("AR Glasses Workout Overlay Demo", frame)
+            overlay_state = controller.build_state(elapsed_seconds=elapsed_seconds)
+            frame = renderer.render(frame, overlay_state)
 
-        if using_video:
-            frame_video_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-            frame_wall_seconds = frame_video_seconds / args.playback_speed
-            remaining_seconds = frame_wall_seconds - (perf_counter() - video_started_at)
-            frame_delay_ms = max(1, int(round(remaining_seconds * 1000)))
+            if output_path and writer is None:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                frame_height, frame_width = frame.shape[:2]
+                output_fps = source_fps * args.playback_speed
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                writer = cv2.VideoWriter(
+                    str(output_path),
+                    fourcc,
+                    output_fps,
+                    (frame_width, frame_height),
+                )
+                if not writer.isOpened():
+                    raise RuntimeError(f"Could not open output video: {output_path}")
 
-        if cv2.waitKey(frame_delay_ms) & 0xFF == ord("q"):
-            break
+            if writer:
+                writer.write(frame)
 
-    cap.release()
-    cv2.destroyAllWindows()
+            if preview_enabled:
+                cv2.imshow("AR Glasses Workout Overlay Demo", frame)
+
+            if realtime_playback:
+                frame_video_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                frame_wall_seconds = frame_video_seconds / args.playback_speed
+                remaining_seconds = frame_wall_seconds - (perf_counter() - video_started_at)
+                frame_delay_ms = max(1, int(round(remaining_seconds * 1000)))
+
+            if preview_enabled and cv2.waitKey(frame_delay_ms) & 0xFF == ord("q"):
+                break
+    finally:
+        cap.release()
+        if writer:
+            writer.release()
+        if preview_enabled:
+            cv2.destroyAllWindows()
+
+    if output_path:
+        print(f"Wrote overlay video to {output_path}")
 
 
 if __name__ == "__main__":
