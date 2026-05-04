@@ -1,0 +1,54 @@
+/* TrainAR design tokens — copied from the design handoff so the iOS app matches the prototype. */
+:root {
+  /* Surfaces */
+  --bg: #0A0A0A;
+  --surface-1: #141414;
+  --surface-2: #1C1C1C;
+  --surface-3: #242424;
+  --hairline: rgba(255,255,255,0.07);
+  --hairline-2: rgba(255,255,255,0.12);
+
+  /* Text */
+  --text-1: #F5F5F5;
+  --text-2: rgba(245,245,245,0.65);
+  --text-3: rgba(245,245,245,0.42);
+  --text-dim: rgba(245,245,245,0.28);
+
+  /* Accent — electric lime */
+  --accent: #C5F23E;
+  --accent-soft: rgba(197, 242, 62, 0.14);
+  --accent-glow: 0 0 32px rgba(197, 242, 62, 0.35);
+  --on-accent: #0A0A0A;
+
+  /* Subtle white-tint overlays */
+  --overlay-1: rgba(255,255,255,0.05);
+  --overlay-2: rgba(255,255,255,0.06);
+  --overlay-3: rgba(255,255,255,0.08);
+
+  /* iPhone surround color on the canvas */
+  --frame-bg: #0A0A0A;
+
+  /* Type */
+  --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Radii */
+  --r-pill: 9999px;
+  --r-card: 20px;
+  --r-card-lg: 28px;
+  --r-chip: 12px;
+}
+
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+.press { transition: transform 120ms ease, opacity 120ms ease; }
+.press:active { transform: scale(0.97); opacity: 0.85; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 380ms cubic-bezier(.2,.7,.2,1) both; }
