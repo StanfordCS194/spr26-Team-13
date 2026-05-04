@@ -186,4 +186,114 @@ const AuthScreen = ({ auth, initialMode = 'signup', onContinue, onBack }) => {
   );
 };
 
-Object.assign(window, { Screen, SplashScreen, AuthScreen });
+// ─────────────────────────────────────────────────────────────
+// 3. Name — "what should we call you?"
+// ─────────────────────────────────────────────────────────────
+const NameScreen = ({ auth, onContinue, onBack }) => {
+  const [name, setName] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    setSubmitting(true);
+    const ok = await auth.setName(name.trim());
+    setSubmitting(false);
+    if (ok) onContinue();
+  };
+
+  return (
+    <Screen padTop={64} padBottom={32} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0 24px', marginBottom: 32 }}>
+        <button onClick={onBack} className="press" style={{
+          width: 40, height: 40, borderRadius: 9999, background: 'var(--surface-1)',
+          border: '1px solid var(--hairline)', color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}><Icon name="arrow-left" size={18} /></button>
+      </div>
+
+      <div style={{ flex: 1, padding: '0 24px' }}>
+        <div className="fade-up">
+          <h1 style={{
+            fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: -0.7,
+            margin: 0, marginBottom: 10,
+          }}>What should we call you?</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, marginBottom: 32 }}>
+            Just a first name is fine — we'll use it on the glasses too.
+          </p>
+
+          <label style={{
+            display: 'block', fontSize: 11, color: 'var(--text-3)', marginBottom: 8,
+            letterSpacing: 0.4, textTransform: 'uppercase', fontWeight: 600,
+          }}>First name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            placeholder="Alex"
+            style={{
+              width: '100%', height: 60, padding: '0 18px', borderRadius: 16,
+              background: 'var(--surface-1)', border: '1px solid var(--hairline)',
+              color: 'var(--text-1)', fontSize: 18, fontFamily: 'var(--font-sans)', fontWeight: 500,
+              outline: 'none',
+            }}
+          />
+
+          <Card padding={16} style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: 'var(--accent-soft)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Icon name="bolt" size={18} stroke="var(--accent)" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Quick setup</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+                Next, we'll pair your glasses. Takes about 30 seconds.
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      <div style={{ padding: '24px 24px 0' }}>
+        <Button onClick={submit} iconRight="arrow-right" disabled={!name.trim() || submitting}>
+          {submitting ? 'Saving…' : 'Continue'}
+        </Button>
+      </div>
+    </Screen>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// 4. Done — placeholder so the flow has somewhere to land. Real
+//    next step is glasses pairing, owned by a different ticket.
+// ─────────────────────────────────────────────────────────────
+const DoneScreen = ({ auth, onRestart }) => (
+  <Screen padTop={0} padBottom={0} style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{
+      flex: 1, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', padding: '0 32px',
+      textAlign: 'center',
+    }}>
+      <div style={{
+        width: 88, height: 88, borderRadius: '50%',
+        background: 'var(--accent)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', marginBottom: 28,
+        boxShadow: '0 0 60px rgba(197,242,62,0.4)',
+      }}>
+        <Icon name="check" size={44} stroke="var(--on-accent)" strokeWidth={2.5} />
+      </div>
+      <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: -0.7, margin: 0, marginBottom: 12 }}>
+        You're in{auth.user && auth.user.name ? `, ${auth.user.name}` : ''}.
+      </h1>
+      <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, maxWidth: 280 }}>
+        Pairing your glasses is the next step — we'll wire that up in a follow-up.
+      </p>
+    </div>
+    <div style={{ padding: '0 24px 40px' }}>
+      <Button variant="ghost" onClick={onRestart}>Restart flow</Button>
+    </div>
+  </Screen>
+);
+
+Object.assign(window, { Screen, SplashScreen, AuthScreen, NameScreen, DoneScreen });
