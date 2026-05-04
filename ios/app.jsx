@@ -1,6 +1,6 @@
 // App — wires the signup screens into the iPhone frame.
 //
-// Tiny state machine: 'splash' → 'auth' → 'name' → 'done'.
+// Tiny state machine: 'splash' → 'auth' → 'name' → 'pair' → 'done'.
 // `mode` decides whether the auth screen opens in signup or sign-in mode.
 
 const PROTOTYPE_W = 402;
@@ -35,15 +35,22 @@ function App() {
       <AuthScreen
         auth={auth}
         initialMode={mode}
-        onContinue={() => setScreen(mode === 'signup' ? 'name' : 'done')}
+        onContinue={() => setScreen(mode === 'signup' ? 'name' : 'pair')}
         onBack={() => setScreen('splash')}
       />
     ),
     name: (
       <NameScreen
         auth={auth}
-        onContinue={() => setScreen('done')}
+        onContinue={() => setScreen('pair')}
         onBack={() => setScreen('auth')}
+      />
+    ),
+    pair: (
+      <PairScreen
+        onContinue={() => setScreen('done')}
+        onSkip={() => setScreen('done')}
+        onBack={() => setScreen(auth.user && auth.user.name ? 'name' : 'auth')}
       />
     ),
     done: <DoneScreen auth={auth} onRestart={restart} />,

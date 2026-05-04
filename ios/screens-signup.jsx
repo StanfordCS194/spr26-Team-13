@@ -287,7 +287,7 @@ const DoneScreen = ({ auth, onRestart }) => (
         You're in{auth.user && auth.user.name ? `, ${auth.user.name}` : ''}.
       </h1>
       <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, maxWidth: 280 }}>
-        Pairing your glasses is the next step — we'll wire that up in a follow-up.
+        Setup's done. The home screen and the rest of the app come next.
       </p>
     </div>
     <div style={{ padding: '0 24px 40px' }}>
