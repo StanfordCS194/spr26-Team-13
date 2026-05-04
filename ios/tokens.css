@@ -52,3 +52,14 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fadeUp 380ms cubic-bezier(.2,.7,.2,1) both; }
+
+/* Pulsing dot used by the "searching for glasses" state. */
+@keyframes pulseDot {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.85); }
+}
+.pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
+
+/* Spinner ring around the pair indicator while it's searching. */
+@keyframes spinRing { to { transform: rotate(360deg); } }
+.spin-ring { animation: spinRing 1.4s linear infinite; }

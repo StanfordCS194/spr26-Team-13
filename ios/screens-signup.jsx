@@ -287,7 +287,7 @@ const DoneScreen = ({ auth, onRestart }) => (
         You're in{auth.user && auth.user.name ? `, ${auth.user.name}` : ''}.
       </h1>
       <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, maxWidth: 280 }}>
-        Pairing your glasses is the next step — we'll wire that up in a follow-up.
+        Setup's done. The home screen and the rest of the app come next.
       </p>
     </div>
     <div style={{ padding: '0 24px 40px' }}>
@@ -296,4 +296,132 @@ const DoneScreen = ({ auth, onRestart }) => (
   </Screen>
 );
 
-Object.assign(window, { Screen, SplashScreen, AuthScreen, NameScreen, DoneScreen });
+// ─────────────────────────────────────────────────────────────
+// 4. Pair glasses — placeholder.
+//
+// We don't actually talk to glasses yet. The whole screen is fake-timer
+// driven so the visual flow matches the design. When a real bluetooth/
+// pairing layer exists, swap the setTimeout calls for real callbacks.
+// ─────────────────────────────────────────────────────────────
+const PairScreen = ({ onContinue, onSkip, onBack }) => {
+  const [phase, setPhase] = React.useState('searching'); // searching → found → connected
+
+  // Pretend to scan for glasses, then "discover" one.
+  React.useEffect(() => {
+    const t = setTimeout(() => setPhase('found'), 1600);
+    return () => clearTimeout(t);
+  }, []);
+
+  const pair = () => {
+    setPhase('connected');
+    setTimeout(onContinue, 1100);
+  };
+
+  const connected = phase === 'connected';
+
+  return (
+    <Screen padTop={64} padBottom={32} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0 24px' }}>
+        <button onClick={onBack} className="press" style={{
+          width: 40, height: 40, borderRadius: 9999, background: 'var(--surface-1)',
+          border: '1px solid var(--hairline)', color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          marginBottom: 24,
+        }}><Icon name="arrow-left" size={18} /></button>
+
+        <h1 style={{
+          fontSize: 28, lineHeight: 1.15, fontWeight: 600, letterSpacing: -0.6,
+          margin: 0, marginBottom: 10,
+        }}>Pair your glasses</h1>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, marginBottom: 32 }}>
+          Make sure your glasses are powered on and within 3 feet.
+        </p>
+      </div>
+
+      {/* Big concentric indicator. */}
+      <div style={{
+        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative',
+      }}>
+        <div style={{
+          width: 240, height: 240, borderRadius: '50%',
+          border: '1px solid ' + (connected ? 'var(--accent)' : 'var(--hairline-2)'),
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative',
+          boxShadow: connected ? '0 0 80px rgba(197,242,62,0.5)' : 'none',
+          transition: 'all 600ms',
+        }}>
+          {phase === 'searching' && (
+            <div className="spin-ring" style={{
+              position: 'absolute', inset: -1, borderRadius: '50%',
+              border: '2px solid transparent', borderTopColor: 'var(--accent)',
+            }} />
+          )}
+          <div style={{
+            width: 130, height: 130, borderRadius: '50%',
+            background: connected ? 'var(--accent)' : 'var(--surface-1)',
+            border: '1px solid ' + (connected ? 'var(--accent)' : 'var(--hairline)'),
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 400ms',
+          }}>
+            {connected
+              ? <Icon name="check"   size={56} stroke="var(--on-accent)" strokeWidth={2.5} />
+              : <Icon name="glasses" size={56} stroke="var(--text-1)"   strokeWidth={1.5} />}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 24px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {phase === 'searching' && (
+          <Card style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="pulse-dot" style={{
+              width: 8, height: 8, borderRadius: 4, background: 'var(--accent)',
+            }} />
+            <div style={{ fontSize: 14, color: 'var(--text-2)' }}>Searching for nearby glasses…</div>
+          </Card>
+        )}
+
+        {phase === 'found' && (
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 12, background: 'var(--surface-2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Icon name="glasses" size={22} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>TrainAR · M2</div>
+                <div style={{
+                  fontSize: 11, color: 'var(--text-3)', marginTop: 2,
+                  fontFamily: 'var(--font-mono)',
+                }}>SN · 8E40·B7C2 · -54 dBm</div>
+              </div>
+              <Button size="sm" onClick={pair} style={{ width: 'auto' }}>Pair</Button>
+            </div>
+          </Card>
+        )}
+
+        {connected && (
+          <Card style={{
+            background: 'var(--accent-soft)', border: '1px solid rgba(197,242,62,0.3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <Icon name="check" size={20} stroke="var(--accent)" strokeWidth={2.5} />
+              <div style={{ fontSize: 14, color: 'var(--accent)', fontWeight: 600 }}>
+                Paired — finishing setup…
+              </div>
+            </div>
+          </Card>
+        )}
+
+        <button onClick={onSkip} className="press" style={{
+          background: 'transparent', border: 'none', color: 'var(--text-2)',
+          fontSize: 13, padding: 12, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+        }}>I'll do this later</button>
+      </div>
+    </Screen>
+  );
+};
+
+Object.assign(window, { Screen, SplashScreen, AuthScreen, NameScreen, PairScreen, DoneScreen });
