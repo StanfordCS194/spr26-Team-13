@@ -12,6 +12,8 @@ interface NavItem {
   badge?: string;
 }
 
+export type SidebarNavId = 'home' | 'programs' | 'add' | 'history';
+
 const NAV_ITEMS: NavItem[] = [
   { id: 'home', icon: 'flame', label: 'Train' },
   { id: 'programs', icon: 'dumbbell', label: 'Programs' },
@@ -20,16 +22,17 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const RECENT = [
-  { name: 'Powerbuilding 5x', dot: 'var(--accent)' },
-  { name: 'Push/Pull/Legs', dot: 'rgba(255,255,255,0.3)' },
-  { name: 'Strong Curves', dot: 'rgba(255,255,255,0.3)' },
+  { name: 'Full Body 1 - 51 min', dot: 'var(--accent)' },
+  { name: 'Lower Strength - 42 min', dot: 'rgba(255,255,255,0.3)' },
+  { name: 'Upper Power - 38 min', dot: 'rgba(255,255,255,0.3)' },
 ];
 
 interface SidebarProps {
   active?: string;
+  onNavigate?: (id: SidebarNavId) => void;
 }
 
-export function Sidebar({ active = 'add' }: SidebarProps) {
+export function Sidebar({ active = 'add', onNavigate }: SidebarProps) {
   return (
     <div
       style={{
@@ -77,8 +80,10 @@ export function Sidebar({ active = 'add' }: SidebarProps) {
         {NAV_ITEMS.map((item) => {
           const sel = item.id === active;
           return (
-            <div
+            <button
               key={item.id}
+              type="button"
+              onClick={() => onNavigate?.(item.id as SidebarNavId)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -87,9 +92,13 @@ export function Sidebar({ active = 'add' }: SidebarProps) {
                 borderRadius: 8,
                 cursor: 'pointer',
                 background: sel ? 'var(--surface-3)' : 'transparent',
+                border: 'none',
                 color: sel ? 'var(--text-1)' : 'var(--text-2)',
                 fontSize: 13.5,
                 fontWeight: sel ? 600 : 500,
+                fontFamily: 'var(--font-sans)',
+                width: '100%',
+                textAlign: 'left',
               }}
             >
               <Icon name={item.icon} size={16} stroke={sel ? 'var(--accent)' : 'var(--text-2)'} />
@@ -102,7 +111,7 @@ export function Sidebar({ active = 'add' }: SidebarProps) {
                   {item.badge}
                 </span>
               )}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -117,7 +126,7 @@ export function Sidebar({ active = 'add' }: SidebarProps) {
           fontWeight: 600,
         }}
       >
-        Recent
+        Recent sessions
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {RECENT.map((p) => (

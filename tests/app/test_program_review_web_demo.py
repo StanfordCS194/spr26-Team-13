@@ -100,6 +100,177 @@ def test_program_review_demo_requires_upload():
     assert "Upload an image or document to process." in response.get_data(as_text=True)
 
 
+def test_program_review_api_returns_parsed_program(monkeypatch, tmp_path):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.app.program_review.web_demo.DESKTOP_PARSE_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        "src.app.program_review.web_demo.extract_program_file",
+        lambda _path: ExtractedDocument(
+            text="Day 1\nBack Squat - 3x5 @ 185 lb",
+            source_type=SourceType.IMAGE,
+            structured_markdown="Day 1\nBack Squat - 3x5 @ 185 lb",
+            structured_data={"doc": "structured"},
+        ),
+    )
+    monkeypatch.setattr("src.app.program_review.web_demo.llm_normalization_available", lambda: True)
+    monkeypatch.setattr("src.app.program_review.web_demo.get_llm_provider", lambda: "gemini")
+    monkeypatch.setattr(
+        "src.app.program_review.web_demo.normalize_document_with_llm",
+        lambda *_args, **_kwargs: TrainingProgram(
+            program_id="program-1",
+            user_id="demo-user",
+            title="Upload",
+            source_type=SourceType.IMAGE,
+            weeks=[
+                TrainingWeek(
+                    week_number=1,
+                    days=[
+                        TrainingDay(
+                            day_id="day-1",
+                            title="Day 1",
+                            exercises=[
+                                ProgramExercise(
+                                    exercise_id="back_squat",
+                                    display_name="Back Squat",
+                                    set_count=3,
+                                    rep_target="5",
+                                    load_target="185 lb",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            needs_user_confirmation=False,
+        ),
+    )
+
+    response = client.post(
+        "/api/programs/parse",
+        data={
+            "user_id": "demo-user",
+            "program_file": (BytesIO(b"fake image bytes"), "upload.png"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["program"]["title"] == "Upload"
+    assert payload["program"]["weeks"][0]["days"][0]["exercises"][0]["display_name"] == "Back Squat"
+    assert payload["extracted_preview"]["normalization_mode"] == "gemini"
+    assert "Back Squat" in payload["extracted_preview"]["markdown"]
+
+
+def test_program_review_api_caches_successful_gemini_parse(monkeypatch, tmp_path):
+    app = create_app()
+    client = app.test_client()
+    calls = {"normalize": 0}
+
+    monkeypatch.setattr("src.app.program_review.web_demo.DESKTOP_PARSE_CACHE_DIR", tmp_path)
+    monkeypatch.setattr("src.app.program_review.web_demo.DESKTOP_CACHE_HIT_DELAY_SECONDS", 0)
+    monkeypatch.setattr(
+        "src.app.program_review.web_demo.extract_program_file",
+        lambda _path: ExtractedDocument(
+            text="Day 1\nBack Squat - 3x5 @ 185 lb",
+            source_type=SourceType.IMAGE,
+            structured_markdown="Day 1\nBack Squat - 3x5 @ 185 lb",
+        ),
+    )
+    monkeypatch.setattr("src.app.program_review.web_demo.llm_normalization_available", lambda: True)
+    monkeypatch.setattr("src.app.program_review.web_demo.get_llm_provider", lambda: "gemini")
+
+    def normalize_once(*_args, **_kwargs):
+        calls["normalize"] += 1
+        return TrainingProgram(
+            program_id="program-1",
+            user_id="demo-user",
+            title="Upload",
+            source_type=SourceType.IMAGE,
+            weeks=[
+                TrainingWeek(
+                    week_number=1,
+                    days=[
+                        TrainingDay(
+                            day_id="day-1",
+                            title="Day 1",
+                            exercises=[
+                                ProgramExercise(
+                                    exercise_id="back_squat",
+                                    display_name="Back Squat",
+                                    set_count=3,
+                                    rep_target="5",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            needs_user_confirmation=False,
+        )
+
+    monkeypatch.setattr("src.app.program_review.web_demo.normalize_document_with_llm", normalize_once)
+
+    for _ in range(2):
+        response = client.post(
+            "/api/programs/parse",
+            data={
+                "user_id": "demo-user",
+                "program_file": (BytesIO(b"same image bytes"), "upload.png"),
+            },
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+        assert response.get_json()["program"]["title"] == "Upload"
+
+    assert calls["normalize"] == 1
+    assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_program_review_api_rejects_missing_llm(monkeypatch, tmp_path):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.app.program_review.web_demo.DESKTOP_PARSE_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        "src.app.program_review.web_demo.extract_program_file",
+        lambda _path: ExtractedDocument(
+            text="Day 1\nBack Squat - 3x5 @ 185 lb",
+            source_type=SourceType.IMAGE,
+            structured_markdown="Day 1\nBack Squat - 3x5 @ 185 lb",
+        ),
+    )
+    monkeypatch.setattr("src.app.program_review.web_demo.llm_normalization_available", lambda: False)
+
+    response = client.post(
+        "/api/programs/parse",
+        data={
+            "user_id": "demo-user",
+            "program_file": (BytesIO(b"fake image bytes"), "upload.png"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert "Gemini normalization is not configured" in response.get_json()["error"]
+
+
+def test_program_review_api_requires_upload():
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/programs/parse",
+        data={"user_id": "demo-user"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Upload an image or document to process."}
+
+
 def test_program_review_demo_shows_unassigned_exercises_when_blocks_exist(monkeypatch):
     app = create_app()
     client = app.test_client()

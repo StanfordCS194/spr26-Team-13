@@ -5,15 +5,17 @@
 //   - The mock paper preview is replaced with a real preview of the uploaded file.
 //     Images render via URL.createObjectURL; PDFs render page 1 via pdfjs-dist;
 //     spreadsheets/unknowns fall back to a centered "Preview unavailable" card.
-//   - The phase animation is driven by setInterval (~700ms cadence) so the screen
-//     auto-advances to Review after ~3s.
+//   - The phase animation is driven locally while the real Docling + Gemini
+//     ingestion request runs through lib/parseProgram.ts.
 
 import { useEffect, useMemo, useState } from 'react';
 import { ContentHeader } from '../components/ContentHeader';
 import { DesktopWindow } from '../components/DesktopWindow';
+import type { SidebarNavId } from '../components/Sidebar';
 import { Icon } from '../components/ui/Icon';
-import { sampleProgramMeta } from '../data/sample';
+import { parseProgram, type ParseProgramResult } from '../lib/parseProgram';
 import { renderPdfFirstPage } from '../lib/pdfPreview';
+import type { TrainingProgram } from '../lib/types';
 import { classifyFile, formatBytes, type FileKind } from '../lib/upload';
 
 const PHASES = [
@@ -27,14 +29,19 @@ const PHASE_INTERVAL_MS = 700;
 
 interface ParsingScreenProps {
   file: File;
-  onDone: () => void;
+  onCancel: () => void;
+  onDone: (result: ParseProgramResult) => void;
+  onNavigate?: (id: SidebarNavId) => void;
 }
 
-export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
+export function ParsingScreen({ file, onCancel, onDone, onNavigate }: ParsingScreenProps) {
   const kind: FileKind = useMemo(() => classifyFile(file), [file]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [phase, setPhase] = useState(0);
+  const [parseResult, setParseResult] = useState<ParseProgramResult | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const stats = parseResult ? summarizeProgram(parseResult.program) : null;
 
   // Build the preview URL (image / pdf / fallback).
   useEffect(() => {
@@ -67,18 +74,38 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
     };
   }, [file, kind]);
 
-  // Drive the phase animation. After the last phase ticks complete, auto-advance.
+  // Send the file through the real ingestion flow.
   useEffect(() => {
-    if (phase >= PHASES.length) {
-      const t = setTimeout(onDone, 600);
+    const controller = new AbortController();
+
+    parseProgram(file, { signal: controller.signal })
+      .then(setParseResult)
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setParseError(err instanceof Error ? err.message : 'Program parsing failed.');
+      });
+
+    return () => controller.abort();
+  }, [file]);
+
+  // Drive the phase animation while the backend is working. Once the request is
+  // complete and the last phase is visible, advance to Review.
+  useEffect(() => {
+    if (parseError) return;
+    if (parseResult && phase >= PHASES.length - 1) {
+      const doneResult = parseResult;
+      const doneTimer = setTimeout(() => onDone(doneResult), 600);
+      return () => clearTimeout(doneTimer);
+    }
+    if (phase < PHASES.length - 1) {
+      const t = setTimeout(() => setPhase((p) => Math.min(p + 1, PHASES.length - 1)), PHASE_INTERVAL_MS);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setPhase((p) => p + 1), PHASE_INTERVAL_MS);
-    return () => clearTimeout(t);
-  }, [phase, onDone]);
+    return undefined;
+  }, [parseError, parseResult, phase, onDone]);
 
   return (
-    <DesktopWindow active="add" title="Parsing">
+    <DesktopWindow active="add" title="Parsing" onNavigate={onNavigate}>
       <ContentHeader
         step={1}
         title="Parsing your program"
@@ -240,8 +267,9 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {PHASES.map((label, i) => {
-                const done = i < phase;
-                const active = i === phase;
+                const done = Boolean(parseResult) || i < phase;
+                const active = !parseResult && !parseError && i === phase;
+                const failed = Boolean(parseError) && i === phase;
                 return (
                   <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                     <div
@@ -254,10 +282,18 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
                           ? 'var(--accent)'
                           : active
                             ? 'transparent'
+                            : failed
+                              ? 'rgba(255,107,92,0.12)'
                             : 'var(--surface-2)',
                         border:
                           '1.5px solid ' +
-                          (done ? 'var(--accent)' : active ? 'var(--accent)' : 'var(--hairline-2)'),
+                          (done
+                            ? 'var(--accent)'
+                            : active
+                              ? 'var(--accent)'
+                              : failed
+                                ? 'var(--danger)'
+                                : 'var(--hairline-2)'),
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -279,13 +315,14 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
                           }}
                         />
                       )}
+                      {failed && <Icon name="alert" size={12} stroke="var(--danger)" strokeWidth={2.4} />}
                     </div>
                     <div style={{ flex: 1, paddingTop: 1 }}>
                       <div
                         style={{
                           fontSize: 13.5,
                           fontWeight: 600,
-                          color: done || active ? 'var(--text-1)' : 'var(--text-3)',
+                          color: done || active || failed ? 'var(--text-1)' : 'var(--text-3)',
                         }}
                       >
                         {label}
@@ -302,8 +339,8 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
             style={{
               borderRadius: 16,
               padding: 20,
-              background: 'var(--hero-bg)',
-              border: '1px solid var(--hero-border)',
+              background: parseError ? 'var(--surface-1)' : 'var(--hero-bg)',
+              border: parseError ? '1px solid rgba(255,107,92,0.24)' : '1px solid var(--hero-border)',
               position: 'relative',
               overflow: 'hidden',
             }}
@@ -311,26 +348,30 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
             <div
               style={{
                 fontSize: 11,
-                color: 'var(--accent)',
+                color: parseError ? 'var(--danger)' : 'var(--accent)',
                 textTransform: 'uppercase',
                 letterSpacing: 0.8,
                 fontWeight: 600,
                 marginBottom: 12,
               }}
             >
-              What we found
+              {parseError ? 'Needs attention' : 'What we found'}
             </div>
             <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: -0.4, marginBottom: 4 }}>
-              {sampleProgramMeta.title}
+              {parseError ? 'Parsing failed' : parseResult?.program.title ?? 'Docling + Gemini'}
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16 }}>
-              by {sampleProgramMeta.author}
+              {parseError
+                ? parseError
+                : parseResult?.extracted_preview?.normalization_mode
+                  ? `normalized with ${parseResult.extracted_preview.normalization_mode}`
+                  : 'extracting document structure'}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               {[
-                { v: sampleProgramMeta.workouts, l: 'Workouts' },
-                { v: sampleProgramMeta.sets, l: 'Sets' },
-                { v: sampleProgramMeta.notes, l: 'Notes' },
+                { v: stats?.days ?? '–', l: 'Days' },
+                { v: stats?.exercises ?? '–', l: 'Workouts' },
+                { v: stats?.sets ?? '–', l: 'Sets' },
               ].map((s) => (
                 <div
                   key={s.l}
@@ -344,7 +385,11 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
                 >
                   <div
                     className="mono"
-                    style={{ fontSize: 22, fontWeight: 600, color: 'var(--accent)' }}
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: parseError ? 'var(--danger)' : 'var(--accent)',
+                    }}
                   >
                     {s.v}
                   </div>
@@ -362,11 +407,47 @@ export function ParsingScreen({ file, onDone }: ParsingScreenProps) {
                 </div>
               ))}
             </div>
+            {parseError && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="press"
+                style={{
+                  marginTop: 16,
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-1)',
+                  border: '1px solid var(--hairline-2)',
+                  padding: '9px 14px',
+                  borderRadius: 9999,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Icon name="arrow-left" size={13} />
+                Choose another file
+              </button>
+            )}
           </div>
         </div>
       </div>
     </DesktopWindow>
   );
+}
+
+function summarizeProgram(program: TrainingProgram) {
+  const days = program.weeks.flatMap((week) => week.days);
+  const exercises = days.flatMap((day) => day.exercises ?? []);
+
+  return {
+    days: days.length,
+    exercises: exercises.length,
+    sets: exercises.reduce((sum, exercise) => sum + exercise.set_count, 0),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────

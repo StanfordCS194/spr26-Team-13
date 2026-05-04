@@ -2,7 +2,7 @@
 // Ported from screens-desktop.jsx (DesktopWindow, lines 30-180, plus TrafficLights 16-25).
 
 import type { ReactNode } from 'react';
-import { Sidebar } from './Sidebar';
+import { Sidebar, type SidebarNavId } from './Sidebar';
 
 export const DT_W = 1240;
 export const DT_H = 800;
@@ -29,10 +29,16 @@ function TrafficLights() {
 interface DesktopWindowProps {
   title?: string;
   active?: string;
+  onNavigate?: (id: SidebarNavId) => void;
   children: ReactNode;
 }
 
-export function DesktopWindow({ title = 'Add a program', active = 'add', children }: DesktopWindowProps) {
+export function DesktopWindow({
+  title = 'Add a program',
+  active = 'add',
+  onNavigate,
+  children,
+}: DesktopWindowProps) {
   return (
     <div
       style={{
@@ -80,7 +86,7 @@ export function DesktopWindow({ title = 'Add a program', active = 'add', childre
 
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <Sidebar active={active} />
+        <Sidebar active={active} onNavigate={onNavigate} />
         <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>{children}</div>
       </div>
     </div>
