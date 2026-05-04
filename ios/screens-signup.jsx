@@ -70,4 +70,120 @@ const SplashScreen = ({ onSignUp, onSignIn }) => (
   </Screen>
 );
 
-Object.assign(window, { Screen, SplashScreen });
+// ─────────────────────────────────────────────────────────────
+// 2. Auth — email + password, signup/login toggle.
+// ─────────────────────────────────────────────────────────────
+const AuthScreen = ({ auth, initialMode = 'signup', onContinue, onBack }) => {
+  const [mode, setMode] = React.useState(initialMode);
+  const [email, setEmail] = React.useState('');
+  const [pw, setPw] = React.useState('');
+  const [show, setShow] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const strength = scorePassword(pw);
+  const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strength];
+
+  const submit = async () => {
+    setSubmitting(true);
+    const fn = mode === 'signup' ? auth.signUp : auth.signIn;
+    const ok = await fn({ email, password: pw });
+    setSubmitting(false);
+    if (ok) onContinue();
+  };
+
+  const ctaDisabled = !email || !pw || submitting;
+
+  return (
+    <Screen padTop={64} padBottom={32} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0 24px' }}>
+        <button onClick={onBack} className="press" style={{
+          width: 40, height: 40, borderRadius: 9999, background: 'var(--surface-1)',
+          border: '1px solid var(--hairline)', color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          marginBottom: 32,
+        }}><Icon name="arrow-left" size={18} /></button>
+
+        <h1 style={{ fontSize: 30, lineHeight: 1.1, fontWeight: 600, letterSpacing: -0.8, margin: 0, marginBottom: 12 }}>
+          {mode === 'signup' ? 'Create your account' : 'Welcome back'}
+        </h1>
+        <p style={{ fontSize: 14, lineHeight: 1.5, color: 'var(--text-2)', margin: 0, marginBottom: 28 }}>
+          {mode === 'signup'
+            ? "We'll sync this account to your glasses so your programs follow you everywhere."
+            : 'Sign in to pick up where you left off.'}
+        </p>
+
+        <Field
+          label="Email"
+          icon="mail"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          placeholder="you@example.com"
+        />
+
+        <Field
+          label="Password"
+          type={show ? 'text' : 'password'}
+          value={pw}
+          onChange={setPw}
+          placeholder="At least 8 characters"
+          trailing={
+            <button onClick={() => setShow(!show)} style={{
+              background: 'transparent', border: 'none', color: 'var(--text-3)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+            }}><Icon name={show ? 'eye-off' : 'eye'} size={18} stroke="var(--text-3)" /></button>
+          }
+        />
+
+        {mode === 'signup' && pw && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '-4px 4px 16px' }}>
+            <div style={{ display: 'flex', gap: 3, flex: 1 }}>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} style={{
+                  flex: 1, height: 3, borderRadius: 2,
+                  background: i <= strength ? 'var(--accent)' : 'var(--overlay-3)',
+                }} />
+              ))}
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-3)', minWidth: 40, textAlign: 'right' }}>
+              {strengthLabel}
+            </span>
+          </div>
+        )}
+
+        {auth.error && (
+          <div style={{
+            fontSize: 13, color: '#FF8B7C', marginBottom: 12, padding: '0 4px',
+          }}>{auth.error}</div>
+        )}
+
+        <Button onClick={submit} iconRight="arrow-right" disabled={ctaDisabled}>
+          {submitting
+            ? (mode === 'signup' ? 'Creating account…' : 'Signing in…')
+            : (mode === 'signup' ? 'Create account' : 'Sign in')}
+        </Button>
+
+        <button
+          onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}
+          className="press"
+          style={{
+            width: '100%', background: 'transparent', border: 'none', color: 'var(--text-2)',
+            fontSize: 13, padding: 16, marginTop: 8, cursor: 'pointer', fontFamily: 'var(--font-sans)',
+          }}
+        >
+          {mode === 'signup' ? 'Already have an account? Sign in' : 'New here? Create an account'}
+        </button>
+      </div>
+
+      <div style={{ flex: 1 }} />
+
+      <div style={{ padding: '0 24px', textAlign: 'center' }}>
+        <p style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5, margin: 0 }}>
+          By continuing you agree to our Terms and Privacy Policy.
+        </p>
+      </div>
+    </Screen>
+  );
+};
+
+Object.assign(window, { Screen, SplashScreen, AuthScreen });
