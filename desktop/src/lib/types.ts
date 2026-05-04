@@ -22,9 +22,18 @@ export interface ProgramExercise {
   ambiguity_flags: string[];
 }
 
+export interface TrainingBlock {
+  block_id: string;
+  title: string;
+  execution_style: 'sequential' | 'round_robin' | 'superset' | 'circuit';
+  exercises: ProgramExercise[];
+  notes?: string;
+}
+
 export interface TrainingDay {
   day_id: string;
   title: string;
+  blocks?: TrainingBlock[];
   exercises: ProgramExercise[];
   notes?: string;
 }

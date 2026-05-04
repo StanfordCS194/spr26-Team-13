@@ -7,15 +7,17 @@ import { useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { ContentHeader } from '../components/ContentHeader';
 import { DesktopWindow } from '../components/DesktopWindow';
+import type { SidebarNavId } from '../components/Sidebar';
 import { Icon } from '../components/ui/Icon';
 import { ACCEPTED_INPUT_TYPES } from '../lib/upload';
 import { usePasteImage } from '../lib/usePasteImage';
 
 interface EntryScreenProps {
   onFileSelected: (file: File) => void;
+  onNavigate?: (id: SidebarNavId) => void;
 }
 
-export function EntryScreen({ onFileSelected }: EntryScreenProps) {
+export function EntryScreen({ onFileSelected, onNavigate }: EntryScreenProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -41,7 +43,7 @@ export function EntryScreen({ onFileSelected }: EntryScreenProps) {
   };
 
   return (
-    <DesktopWindow active="add" title="Add a program">
+    <DesktopWindow active="add" title="Add a program" onNavigate={onNavigate}>
       <ContentHeader
         step={0}
         title="Add a program"

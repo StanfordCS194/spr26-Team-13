@@ -6,15 +6,18 @@ The companion-app UI for TrainAR. For tomorrow's demo this is the **Add Program*
 2. **Parsing** — preview of the file you uploaded, with a 4-phase animated progress.
 3. **Review** — parsed program rendered as an editable-looking table.
 
-Backend is **not** wired. The single seam for connecting a real parser later lives in
-`src/lib/parseProgram.ts`. TS types in `src/lib/types.ts` mirror the Python contracts in
+The parser is wired through `src/lib/parseProgram.ts` to the Flask demo API at
+`/api/programs/parse`, which runs the existing Docling extraction and Gemini-backed
+normalization flow. TS types in `src/lib/types.ts` mirror the Python contracts in
 [../src/contracts/program.py](../src/contracts/program.py).
 
 ## Run
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 — fullscreen Chrome/Safari for the demo look
+python -m src.main --demo --host 127.0.0.1 --port 5001
+cd desktop
+npm run dev          # http://localhost:5173 — proxies /api to Flask on :5001
 ```
 
 ## File layout
@@ -40,7 +43,7 @@ src/
 │   ├── upload.ts              # ACCEPTED_INPUT_TYPES, classifyFile, formatBytes
 │   ├── usePasteImage.ts       # ⌘V → File hook
 │   ├── pdfPreview.ts          # pdfjs-dist page-1 → data URL
-│   ├── parseProgram.ts        # mock async parser (returns sample.ts)
+│   ├── parseProgram.ts        # uploads to Flask Docling + Gemini parser API
 │   └── types.ts               # mirror of src/contracts/program.py
 └── data/
     └── sample.ts              # hardcoded "Powerbuilding 5x" program
