@@ -348,4 +348,162 @@ const ParsingScreen = ({ onDone }) => {
   );
 };
 
-Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen });
+// ─────────────────────────────────────────────────────────────
+// 4. Review — confirm parsed program before saving.
+//
+// Reads from window.PARSED_PROGRAM. Backend can either mutate that
+// object before we render, or we can lift it to a prop later.
+// ─────────────────────────────────────────────────────────────
+const ReviewScreen = ({ program, onConfirm, onClose }) => {
+  const p = program || window.PARSED_PROGRAM || {};
+  const stats    = p.stats    || [];
+  const schedule = p.schedule || [];
+  const flagged  = p.flagged  || [];
+
+  return (
+    <Screen padTop={64} padBottom={130}>
+      <div style={{
+        padding: '0 20px 16px', display: 'flex',
+        alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <button onClick={onClose} className="press" style={{
+          width: 36, height: 36, borderRadius: 9999,
+          background: 'var(--surface-1)', border: '1px solid var(--hairline)',
+          color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}><Icon name="arrow-left" size={16} /></button>
+        <Pill accent>● Parsed</Pill>
+      </div>
+
+      <div style={{ padding: '0 20px 14px' }}>
+        <div style={{
+          fontSize: 12, color: 'var(--text-3)', marginBottom: 4,
+          fontFamily: 'var(--font-mono)', letterSpacing: 0.5,
+        }}>{p.author ? `REVIEW · BY ${p.author.toUpperCase()}` : 'REVIEW'}</div>
+        <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: -0.6, margin: 0, marginBottom: 8 }}>
+          {p.title || 'Untitled program'}
+        </h1>
+        {p.description && (
+          <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
+            {p.description}
+          </p>
+        )}
+      </div>
+
+      {/* Stats row. */}
+      {stats.length > 0 && (
+        <div style={{ padding: '0 20px 18px' }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 1,
+            background: 'var(--hairline)', border: '1px solid var(--hairline)',
+            borderRadius: 16, overflow: 'hidden',
+          }}>
+            {stats.map((s) => (
+              <div key={s.label} style={{
+                background: 'var(--surface-1)', padding: '14px 12px', textAlign: 'center',
+              }}>
+                <div className="mono" style={{
+                  fontSize: 22, fontWeight: 600, color: 'var(--accent)',
+                }}>{s.value}</div>
+                <div style={{
+                  fontSize: 10, color: 'var(--text-3)', marginTop: 2,
+                  textTransform: 'uppercase', letterSpacing: 0.5,
+                }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Weekly schedule. */}
+      {schedule.length > 0 && (
+        <div style={{ padding: '0 20px 18px' }}>
+          <div style={{
+            fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
+            marginBottom: 10, padding: '0 4px',
+          }}>Weekly schedule</div>
+          <Card padding={4}>
+            {schedule.map((d, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 14px',
+                borderBottom: i < schedule.length - 1 ? '1px solid var(--hairline)' : 'none',
+              }}>
+                <div className="mono" style={{
+                  width: 32, fontSize: 11, color: 'var(--text-3)',
+                  textTransform: 'uppercase',
+                }}>{d.day}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 500,
+                    color: d.name === 'Rest' ? 'var(--text-3)' : 'var(--text-1)',
+                  }}>{d.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{d.tag}</div>
+                </div>
+                {d.name !== 'Rest' && (
+                  <div style={{
+                    width: 6, height: 6, borderRadius: 3, background: 'var(--accent)',
+                  }} />
+                )}
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {/* Flagged for review. */}
+      {flagged.length > 0 && (
+        <div style={{ padding: '0 20px 24px' }}>
+          <div style={{
+            fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
+            marginBottom: 10, padding: '0 4px',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            Flagged for review{' '}
+            <Pill style={{
+              background: 'rgba(255,196,98,0.1)', color: 'var(--warn)',
+              borderColor: 'rgba(255,196,98,0.25)',
+            }}>{flagged.length}</Pill>
+          </div>
+          <Card padding={0}>
+            {flagged.map((f, i) => (
+              <div key={i} style={{
+                padding: '14px 16px',
+                borderBottom: i < flagged.length - 1 ? '1px solid var(--hairline)' : 'none',
+                display: 'flex', alignItems: 'flex-start', gap: 12,
+              }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: 7,
+                  background: 'rgba(255,196,98,0.12)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <span style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 700 }}>!</span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.exercise}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>{f.issue}</div>
+                </div>
+                <Icon name="chevron-right" size={16} stroke="var(--text-3)" />
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {/* Sticky-ish bottom CTA. */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        padding: '16px 20px 24px',
+        background: 'linear-gradient(180deg, transparent, var(--bg) 30%)',
+      }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="ghost" onClick={onClose}   style={{ flex: 1 }}>Discard</Button>
+          <Button                onClick={onConfirm} iconRight="check" style={{ flex: 2 }}>Save program</Button>
+        </div>
+      </div>
+    </Screen>
+  );
+};
+
+Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen, ReviewScreen });
