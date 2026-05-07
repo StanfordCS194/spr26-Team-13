@@ -239,4 +239,113 @@ const CameraScreen = ({ onCapture, onClose }) => {
   );
 };
 
-Object.assign(window, { AddProgramScreen, CameraScreen });
+// ─────────────────────────────────────────────────────────────
+// 3. Parsing — AI phases animation.
+//
+// Walks through the phases on a fake timer and then advances. When the
+// real parser ships, replace the setTimeout chain with something that
+// reflects actual progress events from the backend.
+// ─────────────────────────────────────────────────────────────
+const ParsingScreen = ({ onDone }) => {
+  const phases = [
+    'Reading the image',
+    'Identifying exercises',
+    'Parsing sets, reps, percentages',
+    'Structuring the schedule',
+  ];
+  const [phase, setPhase] = React.useState(0);
+
+  React.useEffect(() => {
+    if (phase < phases.length - 1) {
+      const t = setTimeout(() => setPhase(phase + 1), 850);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(onDone, 900);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  const lines = window.PROGRAM_SAMPLE_LINES || [];
+
+  return (
+    <Screen padTop={64} padBottom={40} style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* Tiny preview thumb of the captured page with a sweeping scan line. */}
+      <div style={{ padding: '0 20px 24px', display: 'flex', justifyContent: 'center' }}>
+        <div style={{
+          width: 160, height: 200, borderRadius: 16,
+          background: '#f4f1ea', position: 'relative', overflow: 'hidden',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+          padding: 12, fontFamily: 'var(--font-mono)', fontSize: 7, color: '#444',
+          lineHeight: 1.5,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 8, marginBottom: 4 }}>WK 3 · FB1</div>
+          <div style={{ borderBottom: '1px solid #ccc', marginBottom: 4 }} />
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} style={{ marginBottom: 1 }}>
+              {(lines[i % Math.max(lines.length, 1)] || '').slice(0, 22)}
+            </div>
+          ))}
+          <div className="scan-sweep" style={{
+            position: 'absolute', left: 0, right: 0, height: 30,
+            background: 'linear-gradient(180deg, transparent, rgba(197,242,62,0.6), transparent)',
+            top: `${(phase + 1) * 22}%`, transition: 'top 600ms',
+          }} />
+        </div>
+      </div>
+
+      <div style={{ padding: '0 24px', textAlign: 'center', flex: 1 }}>
+        <h1 style={{
+          fontSize: 24, fontWeight: 600, letterSpacing: -0.4,
+          margin: 0, marginBottom: 8,
+        }}>Parsing your program</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, marginBottom: 28 }}>
+          Hang tight — this usually takes a few seconds.
+        </p>
+
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 8,
+          maxWidth: 280, margin: '0 auto',
+        }}>
+          {phases.map((p, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 14px', borderRadius: 14,
+              background: i === phase ? 'rgba(197,242,62,0.06)' : 'transparent',
+              border: '1px solid ' + (i === phase ? 'rgba(197,242,62,0.2)' : 'transparent'),
+              transition: 'all 300ms',
+            }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: 9999,
+                background: i < phase ? 'var(--accent)' : 'transparent',
+                border: '1.5px solid ' + (i <= phase ? 'var(--accent)' : 'var(--text-dim)'),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative', flexShrink: 0,
+              }}>
+                {i < phase && <Icon name="check" size={11} stroke="var(--on-accent)" strokeWidth={3} />}
+                {i === phase && (
+                  <div className="spin-ring" style={{
+                    position: 'absolute', inset: -3, borderRadius: 9999,
+                    border: '2px solid transparent', borderTopColor: 'var(--accent)',
+                  }} />
+                )}
+              </div>
+              <span style={{
+                fontSize: 13, textAlign: 'left', flex: 1,
+                color: i <= phase ? 'var(--text-1)' : 'var(--text-3)',
+                fontWeight: i === phase ? 600 : 400,
+              }}>{p}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 24px', textAlign: 'center' }}>
+        <p style={{
+          fontSize: 11, color: 'var(--text-3)', margin: 0,
+          fontFamily: 'var(--font-mono)',
+        }}>PROCESSING ON-DEVICE · NO DATA LEAVES YOUR PHONE</p>
+      </div>
+    </Screen>
+  );
+};
+
+Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen });
