@@ -20,6 +20,13 @@
   --accent-glow: 0 0 32px rgba(197, 242, 62, 0.35);
   --on-accent: #0A0A0A;
 
+  /* Hero card — used by the "Take a photo" CTA on the add-program screen. */
+  --hero-bg: linear-gradient(165deg, #1B2410 0%, #141414 60%);
+  --hero-border: rgba(197, 242, 62, 0.18);
+
+  /* Semantic */
+  --warn: #FFC462;
+
   /* Subtle white-tint overlays */
   --overlay-1: rgba(255,255,255,0.05);
   --overlay-2: rgba(255,255,255,0.06);
@@ -38,6 +45,9 @@
   --r-card-lg: 28px;
   --r-chip: 12px;
 }
+
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
 
@@ -63,3 +73,12 @@
 /* Spinner ring around the pair indicator while it's searching. */
 @keyframes spinRing { to { transform: rotate(360deg); } }
 .spin-ring { animation: spinRing 1.4s linear infinite; }
+
+/* Sweeping scan line on the parsing screen's preview thumb. */
+@keyframes scanSweep {
+  0%   { top: 0%;   opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.scan-sweep { animation: scanSweep 2.4s ease-in-out infinite; }

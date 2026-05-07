@@ -268,7 +268,7 @@ const NameScreen = ({ auth, onContinue, onBack }) => {
 // 4. Done — placeholder so the flow has somewhere to land. Real
 //    next step is glasses pairing, owned by a different ticket.
 // ─────────────────────────────────────────────────────────────
-const DoneScreen = ({ auth, onRestart }) => (
+const DoneScreen = ({ auth, onAddProgram, onRestart }) => (
   <Screen padTop={0} padBottom={0} style={{ display: 'flex', flexDirection: 'column' }}>
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column',
@@ -287,10 +287,11 @@ const DoneScreen = ({ auth, onRestart }) => (
         You're in{auth.user && auth.user.name ? `, ${auth.user.name}` : ''}.
       </h1>
       <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, maxWidth: 280 }}>
-        Setup's done. The home screen and the rest of the app come next.
+        Add your first program to get going. The home screen comes later.
       </p>
     </div>
-    <div style={{ padding: '0 24px 40px' }}>
+    <div style={{ padding: '0 24px 40px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Button onClick={onAddProgram} iconRight="arrow-right">Add a program</Button>
       <Button variant="ghost" onClick={onRestart}>Restart flow</Button>
     </div>
   </Screen>

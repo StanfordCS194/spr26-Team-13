@@ -1,6 +1,9 @@
-// App — wires the signup screens into the iPhone frame.
+// App — wires the signup + add-program screens into the iPhone frame.
 //
-// Tiny state machine: 'splash' → 'auth' → 'name' → 'pair' → 'done'.
+// Tiny state machine:
+//   splash → auth → name → pair → done
+//   done → add → camera → parsing → review → done
+//
 // `mode` decides whether the auth screen opens in signup or sign-in mode.
 
 const PROTOTYPE_W = 402;
@@ -53,7 +56,36 @@ function App() {
         onBack={() => setScreen(auth.user && auth.user.name ? 'name' : 'auth')}
       />
     ),
-    done: <DoneScreen auth={auth} onRestart={restart} />,
+    done: (
+      <DoneScreen
+        auth={auth}
+        onAddProgram={() => setScreen('add')}
+        onRestart={restart}
+      />
+    ),
+
+    // ── Add a program ───────────────────────────────────────────
+    add: (
+      <AddProgramScreen
+        onCamera={() => setScreen('camera')}
+        onUpload={() => setScreen('parsing')}
+        onLibrary={() => setScreen('parsing')}
+        onClose={() => setScreen('done')}
+      />
+    ),
+    camera: (
+      <CameraScreen
+        onCapture={() => setScreen('parsing')}
+        onClose={() => setScreen('add')}
+      />
+    ),
+    parsing: <ParsingScreen onDone={() => setScreen('review')} />,
+    review: (
+      <ReviewScreen
+        onConfirm={() => setScreen('done')}
+        onClose={() => setScreen('done')}
+      />
+    ),
   };
 
   return (

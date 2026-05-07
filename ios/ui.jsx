@@ -15,9 +15,29 @@ const Icon = ({ name, size = 20, stroke = 'currentColor', strokeWidth = 1.75, st
     case 'bolt':        return <svg {...common}><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>;
     case 'check':       return <svg {...common}><path d="M5 12l5 5L20 7"/></svg>;
     case 'glasses':     return <svg {...common}><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14c.5-1 1.5-1 2 0M3 9l3.5-2M21 9l-3.5-2"/></svg>;
+    case 'x':           return <svg {...common}><path d="M6 6l12 12M6 18L18 6"/></svg>;
+    case 'camera':      return <svg {...common}><path d="M3 7h4l2-3h6l2 3h4v12H3V7z"/><circle cx="12" cy="13" r="4"/></svg>;
+    case 'upload':      return <svg {...common}><path d="M12 15V4M7 9l5-5 5 5"/><path d="M5 17v3h14v-3"/></svg>;
+    case 'sparkle':     return <svg {...common}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.5 5.5l2.5 2.5M16 16l2.5 2.5M5.5 18.5L8 16M16 8l2.5-2.5"/></svg>;
+    case 'chevron-right': return <svg {...common}><path d="M9 6l6 6-6 6"/></svg>;
+    case 'flash':       return <svg {...common}><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" fill={stroke}/></svg>;
+    case 'image':       return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M21 16l-5-5-9 9"/></svg>;
+    case 'rotate':      return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>;
     default: return null;
   }
 };
+
+const Pill = ({ children, accent, style = {} }) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    height: 24, padding: '0 10px', borderRadius: 9999,
+    fontSize: 11, fontWeight: 500, letterSpacing: 0.2,
+    background: accent ? 'var(--accent-soft)' : 'var(--overlay-2)',
+    color: accent ? 'var(--accent)' : 'var(--text-2)',
+    border: '1px solid ' + (accent ? 'rgba(197,242,62,0.3)' : 'var(--hairline)'),
+    ...style,
+  }}>{children}</span>
+);
 
 const Card = ({ children, style = {}, padding = 20, onClick }) => (
   <div onClick={onClick} className={onClick ? 'press' : ''} style={{
@@ -85,4 +105,4 @@ const Field = ({ label, icon, type = 'text', value, onChange, placeholder, trail
   </div>
 );
 
-Object.assign(window, { Icon, Card, Button, Field });
+Object.assign(window, { Icon, Pill, Card, Button, Field });
