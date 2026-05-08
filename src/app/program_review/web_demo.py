@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -18,7 +19,7 @@ from src.ingestion.llm_normalizer import (
     normalize_document_with_llm,
 )
 
-DESKTOP_LLM_ATTEMPTS = 4
+DESKTOP_LLM_ATTEMPTS = 2
 DESKTOP_PARSE_CACHE_DIR = Path(".cache/program_review")
 DESKTOP_CACHE_HIT_DELAY_SECONDS = 7.0
 
@@ -150,7 +151,7 @@ def _normalize_extracted_program_for_desktop(
     provider = get_llm_provider()
     last_error: Exception | None = None
 
-    for attempt in range(DESKTOP_LLM_ATTEMPTS):
+    for attempt in range(_desktop_llm_attempts()):
         try:
             return (
                 normalize_document_with_llm(
@@ -162,8 +163,8 @@ def _normalize_extracted_program_for_desktop(
             )
         except Exception as exc:
             last_error = exc
-            if attempt < DESKTOP_LLM_ATTEMPTS - 1 and _is_retryable_llm_error(exc):
-                time.sleep(1.5 * (attempt + 1))
+            if attempt < _desktop_llm_attempts() - 1 and _is_retryable_llm_error(exc):
+                time.sleep(0.5 * (attempt + 1))
                 continue
             break
 
@@ -249,3 +250,13 @@ def _is_retryable_llm_error(exc: Exception) -> bool:
             "connection error",
         )
     )
+
+
+def _desktop_llm_attempts() -> int:
+    raw_attempts = os.getenv("DESKTOP_LLM_ATTEMPTS")
+    if raw_attempts is None:
+        return DESKTOP_LLM_ATTEMPTS
+    try:
+        return max(1, int(raw_attempts))
+    except ValueError:
+        return DESKTOP_LLM_ATTEMPTS

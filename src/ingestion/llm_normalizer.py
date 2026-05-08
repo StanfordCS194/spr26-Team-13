@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from functools import lru_cache
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -33,6 +34,7 @@ PROVIDER_BASE_URLS: dict[LLMProvider, str | None] = {
     "openai": None,
     "groq": "https://api.groq.com/openai/v1",
 }
+DEFAULT_MAX_LLM_DOCUMENT_CHARS = 60_000
 
 load_dotenv()
 
@@ -92,6 +94,7 @@ def get_llm_provider() -> LLMProvider:
     return raw_provider  # type: ignore[return-value]
 
 
+@lru_cache(maxsize=len(PROVIDER_ENV_KEYS))
 def _build_client(provider: LLMProvider) -> OpenAI:
     env_key = PROVIDER_ENV_KEYS[provider]
     api_key = os.getenv(env_key)
@@ -156,6 +159,7 @@ def _request_structured_program(
     return parsed_program
 
 
+@lru_cache(maxsize=1)
 def _build_instructions() -> str:
     exercise_catalog = "\n".join(
         f"- {exercise_id}: {details['display_name']}"
@@ -197,12 +201,39 @@ def _build_input(
         "title": title,
         "source_type": document.source_type.value,
     }
+    document_markdown = _prepare_llm_document_text(document.structured_markdown or document.text)
     return (
         "Metadata:\n"
-        f"{json.dumps(metadata, indent=2)}\n\n"
+        f"{json.dumps(metadata, separators=(',', ':'))}\n\n"
         "Parsed document markdown:\n"
-        f"{document.structured_markdown or document.text}"
+        f"{document_markdown}"
     )
+
+
+def _prepare_llm_document_text(text: str) -> str:
+    compacted = re.sub(r"[ \t]+", " ", text)
+    compacted = re.sub(r"\n{3,}", "\n\n", compacted).strip()
+    max_chars = _get_max_llm_document_chars()
+    if max_chars <= 0 or len(compacted) <= max_chars:
+        return compacted
+
+    head_chars = max_chars * 3 // 4
+    tail_chars = max_chars - head_chars
+    return (
+        compacted[:head_chars].rstrip()
+        + "\n\n[Document middle omitted to keep normalization responsive. Preserve all visible entries.]\n\n"
+        + compacted[-tail_chars:].lstrip()
+    )
+
+
+def _get_max_llm_document_chars() -> int:
+    raw_limit = os.getenv("LLM_NORMALIZER_MAX_DOCUMENT_CHARS")
+    if raw_limit is None:
+        return DEFAULT_MAX_LLM_DOCUMENT_CHARS
+    try:
+        return int(raw_limit)
+    except ValueError:
+        return DEFAULT_MAX_LLM_DOCUMENT_CHARS
 
 
 def _slugify(value: str) -> str:

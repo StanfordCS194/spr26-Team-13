@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from pathlib import Path
 import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
 
 from docling.document_converter import DocumentConverter
 from PIL import Image
@@ -17,6 +21,8 @@ Image.MAX_IMAGE_PIXELS = None
 
 
 TEXT_SUFFIXES = {".txt", ".md"}
+CSV_SUFFIXES = {".csv"}
+XLSX_SUFFIXES = {".xlsx"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".heic", ".heif"}
 DOCLING_SUFFIXES = {
     ".pdf",
@@ -30,8 +36,8 @@ DOCLING_SUFFIXES = {
 }
 
 _CONVERTER: DocumentConverter | None = None
-MAX_DOCLING_IMAGE_PIXELS = 12_000_000
-MAX_DOCLING_IMAGE_LONG_EDGE = 2400
+MAX_DOCLING_IMAGE_PIXELS = 6_000_000
+MAX_DOCLING_IMAGE_LONG_EDGE = 1800
 
 
 def extract_document_text(
@@ -49,6 +55,12 @@ def extract_document_text(
             text=file_path.read_text(encoding="utf-8"),
             source_type=SourceType.TEXT,
         )
+
+    if suffix in CSV_SUFFIXES:
+        return _extract_csv_text(file_path)
+
+    if suffix in XLSX_SUFFIXES:
+        return _extract_xlsx_text(file_path)
 
     if suffix in DOCLING_SUFFIXES:
         return _extract_with_docling(file_path, include_structured_data=include_structured_data)
@@ -90,6 +102,105 @@ def _get_converter() -> DocumentConverter:
     return _CONVERTER
 
 
+def _extract_csv_text(path: Path) -> ExtractedDocument:
+    """Read CSVs directly instead of sending plain tabular text through Docling."""
+
+    raw_text = path.read_text(encoding="utf-8-sig")
+    sample = raw_text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample)
+    except csv.Error:
+        dialect = csv.excel
+
+    rows = list(csv.reader(io.StringIO(raw_text), dialect))
+    text = "\n".join("\t".join(cell.strip() for cell in row if cell.strip()) for row in rows)
+    text = "\n".join(line for line in text.splitlines() if line.strip())
+
+    return ExtractedDocument(
+        text=text or raw_text,
+        source_type=SourceType.SPREADSHEET,
+        extraction_notes=["csv_direct_parse"],
+        structured_markdown=text or raw_text,
+    )
+
+
+def _extract_xlsx_text(path: Path) -> ExtractedDocument:
+    """Read workbook cell text directly for the LLM/local parser fast path."""
+
+    try:
+        with zipfile.ZipFile(path) as workbook:
+            shared_strings = _read_xlsx_shared_strings(workbook)
+            lines: list[str] = []
+            for sheet_name in sorted(name for name in workbook.namelist() if name.startswith("xl/worksheets/sheet")):
+                sheet_text = _read_xlsx_sheet_text(workbook, sheet_name, shared_strings)
+                if sheet_text:
+                    lines.append(sheet_text)
+    except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile) as exc:
+        raise ValueError(f"Unsupported or unreadable spreadsheet: {path.name}") from exc
+
+    text = "\n\n".join(lines).strip()
+    if not text:
+        raise ValueError(f"No readable cells found in spreadsheet: {path.name}")
+
+    return ExtractedDocument(
+        text=text,
+        source_type=SourceType.SPREADSHEET,
+        extraction_notes=["xlsx_direct_parse"],
+        structured_markdown=text,
+    )
+
+
+def _read_xlsx_shared_strings(workbook: zipfile.ZipFile) -> list[str]:
+    if "xl/sharedStrings.xml" not in workbook.namelist():
+        return []
+
+    root = ET.fromstring(workbook.read("xl/sharedStrings.xml"))
+    namespace = _xml_namespace(root.tag)
+    strings: list[str] = []
+    for item in root.findall(f".//{namespace}si"):
+        strings.append("".join(text_node.text or "" for text_node in item.findall(f".//{namespace}t")))
+    return strings
+
+
+def _read_xlsx_sheet_text(workbook: zipfile.ZipFile, sheet_name: str, shared_strings: list[str]) -> str:
+    root = ET.fromstring(workbook.read(sheet_name))
+    namespace = _xml_namespace(root.tag)
+    rows: list[str] = []
+    for row in root.findall(f".//{namespace}row"):
+        values = [
+            value
+            for cell in row.findall(f"{namespace}c")
+            if (value := _read_xlsx_cell_value(cell, namespace, shared_strings))
+        ]
+        if values:
+            rows.append("\t".join(values))
+    return "\n".join(rows)
+
+
+def _read_xlsx_cell_value(cell: ET.Element, namespace: str, shared_strings: list[str]) -> str:
+    cell_type = cell.attrib.get("t")
+    if cell_type == "inlineStr":
+        return " ".join(text_node.text or "" for text_node in cell.findall(f".//{namespace}t")).strip()
+
+    value_node = cell.find(f"{namespace}v")
+    if value_node is None or value_node.text is None:
+        return ""
+
+    raw_value = value_node.text.strip()
+    if cell_type == "s":
+        try:
+            return shared_strings[int(raw_value)].strip()
+        except (IndexError, ValueError):
+            return raw_value
+    return raw_value
+
+
+def _xml_namespace(tag: str) -> str:
+    if tag.startswith("{"):
+        return tag[: tag.index("}") + 1]
+    return ""
+
+
 def _prepare_docling_source(path: Path) -> tuple[Path, Path | None]:
     if path.suffix.lower() not in IMAGE_SUFFIXES:
         return path, None
@@ -118,7 +229,7 @@ def _prepare_docling_source(path: Path) -> tuple[Path, Path | None]:
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg", dir="/tmp") as handle:
             temp_path = Path(handle.name)
-        prepared.save(temp_path, format="JPEG", quality=88, optimize=True)
+        prepared.save(temp_path, format="JPEG", quality=82)
     return temp_path, temp_path
 
 

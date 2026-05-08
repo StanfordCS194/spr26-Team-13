@@ -1,4 +1,5 @@
 from pathlib import Path
+import zipfile
 
 from src.ingestion import extract_program_file, ingest_program_text
 
@@ -24,6 +25,51 @@ def test_extract_program_file_returns_plain_text_for_txt_fixture():
     assert extracted.source_type == SourceType.TEXT
     assert "Back Squat - 3x5 @ 185 lb" in extracted.text
     assert extracted.structured_markdown is None
+
+
+def test_extract_program_file_reads_csv_without_docling(tmp_path):
+    csv_path = tmp_path / "program.csv"
+    csv_path.write_text(
+        "Day,Exercise,Sets,Reps,Load\n"
+        "Day 1,Back Squat,3,5,185 lb\n",
+        encoding="utf-8",
+    )
+
+    extracted = extract_program_file(csv_path)
+
+    assert extracted.source_type == SourceType.SPREADSHEET
+    assert "Back Squat" in extracted.text
+    assert "csv_direct_parse" in extracted.extraction_notes
+
+
+def test_extract_program_file_reads_xlsx_without_docling(tmp_path):
+    xlsx_path = tmp_path / "program.xlsx"
+    with zipfile.ZipFile(xlsx_path, "w") as workbook:
+        workbook.writestr(
+            "xl/sharedStrings.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <si><t>Day 1</t></si>
+              <si><t>Back Squat</t></si>
+              <si><t>185 lb</t></si>
+            </sst>""",
+        )
+        workbook.writestr(
+            "xl/worksheets/sheet1.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData>
+                <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>
+                <row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>5</v></c><c r="C2" t="s"><v>2</v></c></row>
+              </sheetData>
+            </worksheet>""",
+        )
+
+    extracted = extract_program_file(xlsx_path)
+
+    assert extracted.source_type == SourceType.SPREADSHEET
+    assert "Back Squat" in extracted.text
+    assert "xlsx_direct_parse" in extracted.extraction_notes
 
 
 def test_build_planned_sessions_from_imported_program():
