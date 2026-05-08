@@ -1,4 +1,4 @@
-/* TrainAR design tokens — copied from the design handoff so the iOS app matches the prototype. */
+/* TrainAR design tokens — synced with the v2 prototype handoff. */
 :root {
   /* Surfaces */
   --bg: #0A0A0A;
@@ -20,12 +20,10 @@
   --accent-glow: 0 0 32px rgba(197, 242, 62, 0.35);
   --on-accent: #0A0A0A;
 
-  /* Hero card — used by the "Take a photo" CTA on the add-program screen. */
+  /* Special — green hero card (Up next, Today, Volume, etc.) */
   --hero-bg: linear-gradient(165deg, #1B2410 0%, #141414 60%);
   --hero-border: rgba(197, 242, 62, 0.18);
-
-  /* Semantic */
-  --warn: #FFC462;
+  --hero-glow: rgba(197, 242, 62, 0.25);
 
   /* Subtle white-tint overlays */
   --overlay-1: rgba(255,255,255,0.05);
@@ -35,9 +33,20 @@
   /* iPhone surround color on the canvas */
   --frame-bg: #0A0A0A;
 
+  /* Tab bar + camera chips — overridden per vibe */
+  --tab-bar-bg: rgba(20,20,20,0.85);
+  --cam-chip-bg: rgba(0,0,0,0.55);
+  --cam-chip-border: rgba(255,255,255,0.18);
+  --cam-chip-fg: #F5F5F5;
+
+  /* Semantic */
+  --danger: #FF6B5C;
+  --warn: #FFC462;
+
   /* Type */
   --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: 'Inter', -apple-system, system-ui, sans-serif;
 
   /* Radii */
   --r-pill: 9999px;
@@ -46,39 +55,68 @@
   --r-chip: 12px;
 }
 
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+
 .tnum { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
-
+/* Hide scrollbars on phone screens but keep scroll. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
+/* Striped placeholder block. */
+.stripe-placeholder {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255,255,255,0.04) 0 6px,
+    rgba(255,255,255,0.07) 6px 12px
+  );
+}
+
+/* Subtle press effect for buttons. */
 .press { transition: transform 120ms ease, opacity 120ms ease; }
 .press:active { transform: scale(0.97); opacity: 0.85; }
 
+/* Soft fade-in. */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fadeUp 380ms cubic-bezier(.2,.7,.2,1) both; }
 
-/* Pulsing dot used by the "searching for glasses" state. */
+/* Pulsing dot used by glasses status + searching state. */
 @keyframes pulseDot {
   0%, 100% { opacity: 1;   transform: scale(1); }
   50%      { opacity: 0.5; transform: scale(0.85); }
 }
 .pulse-dot { animation: pulseDot 1.6s ease-in-out infinite; }
 
-/* Spinner ring around the pair indicator while it's searching. */
+/* Live workout pulse on the Train tab icon. */
+@keyframes tabarLivePulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.25); opacity: 0.7; }
+}
+
+/* Spinner ring. */
 @keyframes spinRing { to { transform: rotate(360deg); } }
 .spin-ring { animation: spinRing 1.4s linear infinite; }
 
-/* Sweeping scan line on the parsing screen's preview thumb. */
+/* Shimmer for parsing placeholders. */
+@keyframes shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position:  200px 0; }
+}
+
+/* Glow edge — used on hero accent borders. */
+.glow-edge {
+  box-shadow: 0 0 0 1px rgba(197, 242, 62, 0.6), 0 0 24px rgba(197, 242, 62, 0.35);
+}
+
+/* OCR scan sweep — runs across the parsing preview thumb. */
 @keyframes scanSweep {
   0%   { top: 0%;   opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
+  10%  {            opacity: 1; }
+  90%  {            opacity: 1; }
   100% { top: 100%; opacity: 0; }
 }
 .scan-sweep { animation: scanSweep 2.4s ease-in-out infinite; }
