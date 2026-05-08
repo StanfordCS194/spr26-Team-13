@@ -276,145 +276,141 @@ const ParsingScreen = ({ onDone }) => {
 // ─────────────────────────────────────────────────────────────
 // 4. Review — confirm parsed program before saving.
 //
-// Reads from window.PARSED_PROGRAM. Backend can either mutate that
-// object before we render, or we can lift it to a prop later.
+// Reads from window.PARSED_PROGRAM (an alias for PROGRAM_DETAIL). Tap
+// the title to rename. Tap any row with a coach note to expand it.
+// Bottom has Discard + Save program. Backend can mutate the global or
+// pass a `program` prop — either works.
 // ─────────────────────────────────────────────────────────────
 const ReviewScreen = ({ program, onConfirm, onClose }) => {
-  const p = program || window.PARSED_PROGRAM || {};
-  const stats    = p.stats    || [];
-  const schedule = p.schedule || [];
-  const flagged  = p.flagged  || [];
+  const source = program || window.PARSED_PROGRAM || {};
+  const exercises = source.exercises || [];
+  const initialName = source.name || 'Powerbuilding 5×';
+
+  const [openRow, setOpenRow] = React.useState(null);
+  const [name, setName] = React.useState(initialName);
+  const [editing, setEditing] = React.useState(false);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
 
   return (
     <Screen padTop={64} padBottom={130}>
-      <div style={{
-        padding: '0 20px 16px', display: 'flex',
-        alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <button onClick={onClose} className="press" style={{
-          width: 36, height: 36, borderRadius: 9999,
-          background: 'var(--surface-1)', border: '1px solid var(--hairline)',
-          color: 'var(--text-1)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="arrow-left" size={16} /></button>
-        <Pill accent>● Parsed</Pill>
-      </div>
-
-      <div style={{ padding: '0 20px 14px' }}>
+      <div style={{ padding: '0 20px 18px' }}>
         <div style={{
-          fontSize: 12, color: 'var(--text-3)', marginBottom: 4,
+          fontSize: 12, color: 'var(--accent)', marginBottom: 6,
           fontFamily: 'var(--font-mono)', letterSpacing: 0.5,
-        }}>{p.author ? `REVIEW · BY ${p.author.toUpperCase()}` : 'REVIEW'}</div>
-        <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: -0.6, margin: 0, marginBottom: 8 }}>
-          {p.title || 'Untitled program'}
-        </h1>
-        {p.description && (
-          <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
-            {p.description}
-          </p>
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <Icon name="check" size={11} stroke="var(--accent)" strokeWidth={2.5} />
+          PARSED · NAME IT
+        </div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setEditing(false); }}
+            style={{
+              width: '100%',
+              fontSize: 30, fontWeight: 600, letterSpacing: -0.6,
+              background: 'transparent',
+              border: 'none', outline: 'none',
+              borderBottom: '2px solid var(--accent)',
+              color: 'var(--text-1)', margin: 0, marginBottom: 8,
+              padding: '0 0 4px',
+              fontFamily: 'var(--font-sans)',
+            }}
+          />
+        ) : (
+          <h1
+            onClick={() => setEditing(true)}
+            className="press"
+            style={{
+              fontSize: 30, fontWeight: 600, letterSpacing: -0.6, margin: 0, marginBottom: 8,
+              cursor: 'text',
+              display: 'inline-flex', alignItems: 'center', gap: 10,
+            }}
+          >
+            <span>{name || 'Untitled program'}</span>
+            <Icon name="edit" size={16} stroke="var(--text-3)" />
+          </h1>
         )}
+        <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
+          {exercises.length} lifts · tap title to rename
+        </p>
       </div>
 
-      {/* Stats row. */}
-      {stats.length > 0 && (
-        <div style={{ padding: '0 20px 18px' }}>
-          <div style={{
-            display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 1,
-            background: 'var(--hairline)', border: '1px solid var(--hairline)',
-            borderRadius: 16, overflow: 'hidden',
-          }}>
-            {stats.map((s) => (
-              <div key={s.label} style={{
-                background: 'var(--surface-1)', padding: '14px 12px', textAlign: 'center',
-              }}>
-                <div className="mono" style={{
-                  fontSize: 22, fontWeight: 600, color: 'var(--accent)',
-                }}>{s.value}</div>
-                <div style={{
-                  fontSize: 10, color: 'var(--text-3)', marginTop: 2,
-                  textTransform: 'uppercase', letterSpacing: 0.5,
-                }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Weekly schedule. */}
-      {schedule.length > 0 && (
-        <div style={{ padding: '0 20px 18px' }}>
-          <div style={{
-            fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
-            marginBottom: 10, padding: '0 4px',
-          }}>Weekly schedule</div>
-          <Card padding={4}>
-            {schedule.map((d, i) => (
+      <div style={{ padding: '0 20px' }}>
+        <Card padding={0}>
+          {exercises.map((ex, i) => {
+            const isOpen = openRow === i;
+            const hasNote = !!ex.note;
+            return (
               <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 14px',
-                borderBottom: i < schedule.length - 1 ? '1px solid var(--hairline)' : 'none',
+                borderBottom: i < exercises.length - 1 ? '1px solid var(--hairline)' : 'none',
               }}>
-                <div className="mono" style={{
-                  width: 32, fontSize: 11, color: 'var(--text-3)',
-                  textTransform: 'uppercase',
-                }}>{d.day}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: 13, fontWeight: 500,
-                    color: d.name === 'Rest' ? 'var(--text-3)' : 'var(--text-1)',
-                  }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{d.tag}</div>
+                <div
+                  onClick={() => hasNote && setOpenRow(isOpen ? null : i)}
+                  className={hasNote ? 'press' : ''}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.6fr 36px 44px 56px 16px',
+                    gap: 8, alignItems: 'center',
+                    padding: '13px 14px',
+                    cursor: hasNote ? 'pointer' : 'default',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 500, letterSpacing: -0.1, lineHeight: 1.25,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {ex.name}
+                    </div>
+                  </div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.sets}</div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.reps}</div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--accent)', textAlign: 'right', fontWeight: 600 }}>{ex.load}</div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    {hasNote ? (
+                      <Icon
+                        name="chevron-down"
+                        size={13}
+                        stroke="var(--text-3)"
+                        style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}
+                      />
+                    ) : (
+                      <span style={{ width: 13, height: 13, display: 'block' }} />
+                    )}
+                  </div>
                 </div>
-                {d.name !== 'Rest' && (
-                  <div style={{
-                    width: 6, height: 6, borderRadius: 3, background: 'var(--accent)',
-                  }} />
+
+                {hasNote && (
+                  <div style={{ maxHeight: isOpen ? 200 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
+                    <div style={{
+                      padding: '10px 14px 14px 14px',
+                      fontSize: 12, color: 'var(--text-2)', lineHeight: 1.45,
+                      borderTop: '1px solid var(--hairline)',
+                    }}>
+                      <div className="mono" style={{
+                        fontSize: 9, color: 'var(--text-3)', letterSpacing: 0.5,
+                        textTransform: 'uppercase', marginBottom: 4,
+                      }}>Notes</div>
+                      {ex.note}
+                    </div>
+                  </div>
                 )}
               </div>
-            ))}
-          </Card>
-        </div>
-      )}
-
-      {/* Flagged for review. */}
-      {flagged.length > 0 && (
-        <div style={{ padding: '0 20px 24px' }}>
-          <div style={{
-            fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
-            marginBottom: 10, padding: '0 4px',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            Flagged for review{' '}
-            <Pill style={{
-              background: 'rgba(255,196,98,0.1)', color: 'var(--warn)',
-              borderColor: 'rgba(255,196,98,0.25)',
-            }}>{flagged.length}</Pill>
-          </div>
-          <Card padding={0}>
-            {flagged.map((f, i) => (
-              <div key={i} style={{
-                padding: '14px 16px',
-                borderBottom: i < flagged.length - 1 ? '1px solid var(--hairline)' : 'none',
-                display: 'flex', alignItems: 'flex-start', gap: 12,
-              }}>
-                <div style={{
-                  width: 24, height: 24, borderRadius: 7,
-                  background: 'rgba(255,196,98,0.12)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <span style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 700 }}>!</span>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.exercise}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>{f.issue}</div>
-                </div>
-                <Icon name="chevron-right" size={16} stroke="var(--text-3)" />
-              </div>
-            ))}
-          </Card>
-        </div>
-      )}
+            );
+          })}
+        </Card>
+      </div>
 
       {/* Sticky-ish bottom CTA. */}
       <div style={{
@@ -423,8 +419,10 @@ const ReviewScreen = ({ program, onConfirm, onClose }) => {
         background: 'linear-gradient(180deg, transparent, var(--bg) 30%)',
       }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="ghost" onClick={onClose}   style={{ flex: 1 }}>Discard</Button>
-          <Button                onClick={onConfirm} iconRight="check" style={{ flex: 2 }}>Save program</Button>
+          <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>Discard</Button>
+          <Button onClick={() => onConfirm && onConfirm({ name })} iconRight="download" style={{ flex: 2 }}>
+            Save program
+          </Button>
         </div>
       </div>
     </Screen>
