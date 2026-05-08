@@ -1,4 +1,4 @@
-// Add-program flow screens: Entry → Camera → Parsing → Review.
+// Add-program flow screens: Entry → Camera → Parsing → Review (or Failed scan).
 //
 // Frontend only. The camera screen draws chrome over a placeholder where the
 // camera feed will eventually render; parsing runs on a fake timer; review
@@ -9,25 +9,23 @@
 // ─────────────────────────────────────────────────────────────
 // 1. Entry — pick a source.
 // ─────────────────────────────────────────────────────────────
-const AddProgramScreen = ({ onCamera, onUpload, onLibrary, onClose }) => (
+const AddProgramScreen = ({ onCamera, onUpload, onClose }) => (
   <Screen padTop={64} padBottom={32}>
-    <div style={{
-      padding: '0 20px 16px', display: 'flex',
-      alignItems: 'center', justifyContent: 'space-between',
-    }}>
-      <div>
-        <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.5, margin: 0 }}>
-          Add a program
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, marginTop: 4 }}>
-          Drop in any program. We'll parse and structure it.
-        </p>
-      </div>
+    <div style={{ padding: '0 20px 16px' }}>
       <button onClick={onClose} className="press" style={{
         width: 36, height: 36, borderRadius: 9999, background: 'var(--surface-1)',
         border: '1px solid var(--hairline)', color: 'var(--text-1)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-      }}><Icon name="x" size={16} /></button>
+      }}><Icon name="arrow-left" size={16} /></button>
+    </div>
+
+    <div style={{ padding: '0 20px 16px' }}>
+      <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.5, margin: 0 }}>
+        Add a program
+      </h1>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, marginTop: 4 }}>
+        Drop in any program. We'll parse and structure it.
+      </p>
     </div>
 
     <div style={{
@@ -43,11 +41,6 @@ const AddProgramScreen = ({ onCamera, onUpload, onLibrary, onClose }) => (
         color: 'var(--text-1)', textAlign: 'left', cursor: 'pointer',
         fontFamily: 'var(--font-sans)',
       }}>
-        <div style={{
-          position: 'absolute', top: -30, right: -30, width: 120, height: 120,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(197,242,62,0.2), transparent 60%)',
-        }} />
         <div style={{
           width: 48, height: 48, borderRadius: 14, background: 'var(--accent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
@@ -82,32 +75,6 @@ const AddProgramScreen = ({ onCamera, onUpload, onLibrary, onClose }) => (
           PDF, image, spreadsheet, or plain text from your library.
         </div>
       </button>
-
-      {/* Browse community */}
-      <button onClick={onLibrary} className="press" style={{
-        padding: 18, borderRadius: 'var(--r-card)',
-        background: 'transparent', border: '1px dashed var(--hairline-2)',
-        color: 'var(--text-2)', textAlign: 'left', cursor: 'pointer',
-        fontFamily: 'var(--font-sans)',
-        display: 'flex', alignItems: 'center', gap: 14,
-      }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 10, background: 'transparent',
-          border: '1px solid var(--hairline)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Icon name="sparkle" size={18} stroke="var(--text-2)" />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>
-            Browse community programs
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
-            5/3/1, nSuns, PPL, Starting Strength…
-          </div>
-        </div>
-        <Icon name="chevron-right" size={16} stroke="var(--text-3)" />
-      </button>
     </div>
   </Screen>
 );
@@ -115,17 +82,16 @@ const AddProgramScreen = ({ onCamera, onUpload, onLibrary, onClose }) => (
 // ─────────────────────────────────────────────────────────────
 // 2. Camera — UI over a real camera view.
 //
-// The big rotated "paper" rectangle in the middle is a placeholder for
-// the camera feed. When the backend wires up a real camera, swap the
-// paper div for a <video> element bound to getUserMedia (or whatever
-// they end up using). The rest of the chrome — close, flash, reticles,
-// hint pill, capture button — stays the same.
+// The rotated "paper" rectangle in the middle is a placeholder for the
+// camera feed. When the backend wires up a real camera, swap the paper
+// div for a <video> element bound to getUserMedia (or whatever they end
+// up using). The rest of the chrome — close, flash, capture — stays.
 // ─────────────────────────────────────────────────────────────
 const CameraScreen = ({ onCapture, onClose }) => {
   const lines = window.PROGRAM_SAMPLE_LINES || [];
   return (
     <Screen padTop={0} padBottom={0} style={{
-      display: 'flex', flexDirection: 'column', background: '#000',
+      display: 'flex', flexDirection: 'column', background: 'var(--camera-bg, #000)',
     }}>
       {/* Viewfinder area — the placeholder lives in here. */}
       <div style={{
@@ -133,7 +99,7 @@ const CameraScreen = ({ onCapture, onClose }) => {
         background: 'linear-gradient(180deg, #1a1a1a, #0a0a0a)',
         overflow: 'hidden',
       }}>
-        {/* Placeholder for the camera feed — fake "paper" page. */}
+        {/* Fake "paper" with rows — looks like a program sheet. */}
         <div style={{
           position: 'absolute', top: 80, left: 30, right: 30, bottom: 120,
           background: '#f4f1ea', borderRadius: 4, padding: 16,
@@ -142,70 +108,33 @@ const CameraScreen = ({ onCapture, onClose }) => {
           fontFamily: 'var(--font-mono)', fontSize: 9, color: '#3a3a3a',
           lineHeight: 1.6, overflow: 'hidden',
         }}>
-          <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>
-            WEEK 3 — FULL BODY 1
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>FULL BODY</div>
           <div style={{ borderBottom: '1px solid #ccc', marginBottom: 6 }} />
           {lines.map((l, i) => <div key={i}>{l}</div>)}
         </div>
 
-        {/* Corner reticles framing the program region. */}
-        {[[40, 40], [40, 'auto', 'auto', 40], ['auto', 40, 40, 'auto'], ['auto', 'auto', 40, 40]].map((c, i) => (
-          <div key={i} style={{
-            position: 'absolute',
-            top: c[0], right: c[1], bottom: c[2], left: c[3],
-            width: 28, height: 28,
-            borderTop:    c[0] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderBottom: c[2] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderLeft:   c[3] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderRight:  c[1] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderTopLeftRadius:     c[0] !== 'auto' && c[3] !== 'auto' ? 8 : 0,
-            borderTopRightRadius:    c[0] !== 'auto' && c[1] !== 'auto' ? 8 : 0,
-            borderBottomLeftRadius:  c[2] !== 'auto' && c[3] !== 'auto' ? 8 : 0,
-            borderBottomRightRadius: c[2] !== 'auto' && c[1] !== 'auto' ? 8 : 0,
-          }} />
-        ))}
-
-        {/* AI hint pill. */}
-        <div style={{
-          position: 'absolute', top: 70, left: 0, right: 0,
-          display: 'flex', justifyContent: 'center',
-        }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '8px 14px', borderRadius: 9999,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(197,242,62,0.3)',
-            color: 'var(--accent)', fontSize: 12, fontWeight: 600,
-          }}>
-            <Icon name="sparkle" size={14} stroke="var(--accent)" />
-            Program detected — hold steady
-          </div>
-        </div>
-
-        {/* Top close + flash. */}
+        {/* Top close + flash chips. */}
         <button onClick={onClose} className="press" style={{
           position: 'absolute', top: 60, left: 20,
           width: 40, height: 40, borderRadius: 9999,
-          background: 'rgba(0,0,0,0.6)',
+          background: 'var(--cam-chip-bg)',
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-1)',
+          border: '1px solid var(--cam-chip-border)', color: 'var(--cam-chip-fg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="x" size={18} /></button>
+        }}><Icon name="x" size={18} stroke="var(--cam-chip-fg)" /></button>
         <button className="press" style={{
           position: 'absolute', top: 60, right: 20,
           width: 40, height: 40, borderRadius: 9999,
-          background: 'rgba(0,0,0,0.6)',
+          background: 'var(--cam-chip-bg)',
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-1)',
+          border: '1px solid var(--cam-chip-border)', color: 'var(--cam-chip-fg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="flash" size={18} /></button>
+        }}><Icon name="flash" size={18} stroke="var(--cam-chip-fg)" /></button>
       </div>
 
-      {/* Bottom controls — gallery, capture, flip. */}
+      {/* Bottom controls — gallery, capture, spacer. */}
       <div style={{
-        padding: '24px 20px 36px', background: '#000',
+        padding: '24px 20px 36px', background: 'var(--camera-bg, #000)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-around',
       }}>
         <button className="press" style={{
@@ -228,12 +157,8 @@ const CameraScreen = ({ onCapture, onClose }) => {
           }} />
         </button>
 
-        <button className="press" style={{
-          width: 52, height: 52, borderRadius: 14,
-          background: 'var(--surface-2)', border: '1px solid var(--hairline)',
-          color: 'var(--text-1)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><Icon name="rotate" size={20} /></button>
+        {/* Spacer to keep the capture button centered. */}
+        <div style={{ width: 52, height: 52 }} />
       </div>
     </Screen>
   );
@@ -351,145 +276,141 @@ const ParsingScreen = ({ onDone }) => {
 // ─────────────────────────────────────────────────────────────
 // 4. Review — confirm parsed program before saving.
 //
-// Reads from window.PARSED_PROGRAM. Backend can either mutate that
-// object before we render, or we can lift it to a prop later.
+// Reads from window.PARSED_PROGRAM (an alias for PROGRAM_DETAIL). Tap
+// the title to rename. Tap any row with a coach note to expand it.
+// Bottom has Discard + Save program. Backend can mutate the global or
+// pass a `program` prop — either works.
 // ─────────────────────────────────────────────────────────────
 const ReviewScreen = ({ program, onConfirm, onClose }) => {
-  const p = program || window.PARSED_PROGRAM || {};
-  const stats    = p.stats    || [];
-  const schedule = p.schedule || [];
-  const flagged  = p.flagged  || [];
+  const source = program || window.PARSED_PROGRAM || {};
+  const exercises = source.exercises || [];
+  const initialName = source.name || 'Powerbuilding 5×';
+
+  const [openRow, setOpenRow] = React.useState(null);
+  const [name, setName] = React.useState(initialName);
+  const [editing, setEditing] = React.useState(false);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
 
   return (
     <Screen padTop={64} padBottom={130}>
-      <div style={{
-        padding: '0 20px 16px', display: 'flex',
-        alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <button onClick={onClose} className="press" style={{
-          width: 36, height: 36, borderRadius: 9999,
-          background: 'var(--surface-1)', border: '1px solid var(--hairline)',
-          color: 'var(--text-1)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="arrow-left" size={16} /></button>
-        <Pill accent>● Parsed</Pill>
-      </div>
-
-      <div style={{ padding: '0 20px 14px' }}>
+      <div style={{ padding: '0 20px 18px' }}>
         <div style={{
-          fontSize: 12, color: 'var(--text-3)', marginBottom: 4,
+          fontSize: 12, color: 'var(--accent)', marginBottom: 6,
           fontFamily: 'var(--font-mono)', letterSpacing: 0.5,
-        }}>{p.author ? `REVIEW · BY ${p.author.toUpperCase()}` : 'REVIEW'}</div>
-        <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: -0.6, margin: 0, marginBottom: 8 }}>
-          {p.title || 'Untitled program'}
-        </h1>
-        {p.description && (
-          <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
-            {p.description}
-          </p>
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <Icon name="check" size={11} stroke="var(--accent)" strokeWidth={2.5} />
+          PARSED · NAME IT
+        </div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setEditing(false); }}
+            style={{
+              width: '100%',
+              fontSize: 30, fontWeight: 600, letterSpacing: -0.6,
+              background: 'transparent',
+              border: 'none', outline: 'none',
+              borderBottom: '2px solid var(--accent)',
+              color: 'var(--text-1)', margin: 0, marginBottom: 8,
+              padding: '0 0 4px',
+              fontFamily: 'var(--font-sans)',
+            }}
+          />
+        ) : (
+          <h1
+            onClick={() => setEditing(true)}
+            className="press"
+            style={{
+              fontSize: 30, fontWeight: 600, letterSpacing: -0.6, margin: 0, marginBottom: 8,
+              cursor: 'text',
+              display: 'inline-flex', alignItems: 'center', gap: 10,
+            }}
+          >
+            <span>{name || 'Untitled program'}</span>
+            <Icon name="edit" size={16} stroke="var(--text-3)" />
+          </h1>
         )}
+        <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
+          {exercises.length} lifts · tap title to rename
+        </p>
       </div>
 
-      {/* Stats row. */}
-      {stats.length > 0 && (
-        <div style={{ padding: '0 20px 18px' }}>
-          <div style={{
-            display: 'grid', gridTemplateColumns: `repeat(${stats.length}, 1fr)`, gap: 1,
-            background: 'var(--hairline)', border: '1px solid var(--hairline)',
-            borderRadius: 16, overflow: 'hidden',
-          }}>
-            {stats.map((s) => (
-              <div key={s.label} style={{
-                background: 'var(--surface-1)', padding: '14px 12px', textAlign: 'center',
-              }}>
-                <div className="mono" style={{
-                  fontSize: 22, fontWeight: 600, color: 'var(--accent)',
-                }}>{s.value}</div>
-                <div style={{
-                  fontSize: 10, color: 'var(--text-3)', marginTop: 2,
-                  textTransform: 'uppercase', letterSpacing: 0.5,
-                }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Weekly schedule. */}
-      {schedule.length > 0 && (
-        <div style={{ padding: '0 20px 18px' }}>
-          <div style={{
-            fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
-            marginBottom: 10, padding: '0 4px',
-          }}>Weekly schedule</div>
-          <Card padding={4}>
-            {schedule.map((d, i) => (
+      <div style={{ padding: '0 20px' }}>
+        <Card padding={0}>
+          {exercises.map((ex, i) => {
+            const isOpen = openRow === i;
+            const hasNote = !!ex.note;
+            return (
               <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 14px',
-                borderBottom: i < schedule.length - 1 ? '1px solid var(--hairline)' : 'none',
+                borderBottom: i < exercises.length - 1 ? '1px solid var(--hairline)' : 'none',
               }}>
-                <div className="mono" style={{
-                  width: 32, fontSize: 11, color: 'var(--text-3)',
-                  textTransform: 'uppercase',
-                }}>{d.day}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: 13, fontWeight: 500,
-                    color: d.name === 'Rest' ? 'var(--text-3)' : 'var(--text-1)',
-                  }}>{d.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 1 }}>{d.tag}</div>
+                <div
+                  onClick={() => hasNote && setOpenRow(isOpen ? null : i)}
+                  className={hasNote ? 'press' : ''}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.6fr 36px 44px 56px 16px',
+                    gap: 8, alignItems: 'center',
+                    padding: '13px 14px',
+                    cursor: hasNote ? 'pointer' : 'default',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 500, letterSpacing: -0.1, lineHeight: 1.25,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {ex.name}
+                    </div>
+                  </div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.sets}</div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.reps}</div>
+                  <div className="mono" style={{ fontSize: 12, color: 'var(--accent)', textAlign: 'right', fontWeight: 600 }}>{ex.load}</div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    {hasNote ? (
+                      <Icon
+                        name="chevron-down"
+                        size={13}
+                        stroke="var(--text-3)"
+                        style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}
+                      />
+                    ) : (
+                      <span style={{ width: 13, height: 13, display: 'block' }} />
+                    )}
+                  </div>
                 </div>
-                {d.name !== 'Rest' && (
-                  <div style={{
-                    width: 6, height: 6, borderRadius: 3, background: 'var(--accent)',
-                  }} />
+
+                {hasNote && (
+                  <div style={{ maxHeight: isOpen ? 200 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
+                    <div style={{
+                      padding: '10px 14px 14px 14px',
+                      fontSize: 12, color: 'var(--text-2)', lineHeight: 1.45,
+                      borderTop: '1px solid var(--hairline)',
+                    }}>
+                      <div className="mono" style={{
+                        fontSize: 9, color: 'var(--text-3)', letterSpacing: 0.5,
+                        textTransform: 'uppercase', marginBottom: 4,
+                      }}>Notes</div>
+                      {ex.note}
+                    </div>
+                  </div>
                 )}
               </div>
-            ))}
-          </Card>
-        </div>
-      )}
-
-      {/* Flagged for review. */}
-      {flagged.length > 0 && (
-        <div style={{ padding: '0 20px 24px' }}>
-          <div style={{
-            fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
-            marginBottom: 10, padding: '0 4px',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            Flagged for review{' '}
-            <Pill style={{
-              background: 'rgba(255,196,98,0.1)', color: 'var(--warn)',
-              borderColor: 'rgba(255,196,98,0.25)',
-            }}>{flagged.length}</Pill>
-          </div>
-          <Card padding={0}>
-            {flagged.map((f, i) => (
-              <div key={i} style={{
-                padding: '14px 16px',
-                borderBottom: i < flagged.length - 1 ? '1px solid var(--hairline)' : 'none',
-                display: 'flex', alignItems: 'flex-start', gap: 12,
-              }}>
-                <div style={{
-                  width: 24, height: 24, borderRadius: 7,
-                  background: 'rgba(255,196,98,0.12)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <span style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 700 }}>!</span>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.exercise}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>{f.issue}</div>
-                </div>
-                <Icon name="chevron-right" size={16} stroke="var(--text-3)" />
-              </div>
-            ))}
-          </Card>
-        </div>
-      )}
+            );
+          })}
+        </Card>
+      </div>
 
       {/* Sticky-ish bottom CTA. */}
       <div style={{
@@ -498,12 +419,61 @@ const ReviewScreen = ({ program, onConfirm, onClose }) => {
         background: 'linear-gradient(180deg, transparent, var(--bg) 30%)',
       }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="ghost" onClick={onClose}   style={{ flex: 1 }}>Discard</Button>
-          <Button                onClick={onConfirm} iconRight="check" style={{ flex: 2 }}>Save program</Button>
+          <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>Discard</Button>
+          <Button onClick={() => onConfirm && onConfirm({ name })} iconRight="download" style={{ flex: 2 }}>
+            Save program
+          </Button>
         </div>
       </div>
     </Screen>
   );
 };
 
-Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen, ReviewScreen });
+// ─────────────────────────────────────────────────────────────
+// 5. Failed scan — when the parser couldn't read the source.
+// ─────────────────────────────────────────────────────────────
+const FailedScanScreen = ({ onRetry, onClose }) => (
+  <Screen padTop={56} padBottom={40} style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: '0 20px 20px' }}>
+      <button onClick={onClose} className="press" style={{
+        width: 36, height: 36, borderRadius: 9999, background: 'var(--surface-1)',
+        border: '1px solid var(--hairline)', color: 'var(--text-1)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+      }}><Icon name="x" size={16} /></button>
+    </div>
+
+    <div style={{
+      flex: 1, padding: '0 32px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      textAlign: 'center',
+    }}>
+      <div style={{
+        width: 64, height: 64, borderRadius: 32,
+        background: 'rgba(255,138,122,0.10)',
+        border: '1px solid rgba(255,138,122,0.25)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginBottom: 24,
+        fontSize: 30, fontWeight: 700, color: '#FF8A7A', lineHeight: 1,
+      }}>!</div>
+
+      <h1 style={{
+        fontSize: 24, fontWeight: 600, letterSpacing: -0.4,
+        margin: 0, marginBottom: 10,
+      }}>Couldn't read this one</h1>
+      <p style={{
+        fontSize: 14, color: 'var(--text-2)',
+        margin: 0, lineHeight: 1.5, maxWidth: 280,
+      }}>
+        The image was too blurry or the format didn't match what we recognize.
+        Try again with a clearer shot, or enter it manually.
+      </p>
+    </div>
+
+    <div style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Button onClick={onRetry}>Try again</Button>
+      <Button variant="ghost" onClick={onClose}>Back to home</Button>
+    </div>
+  </Screen>
+);
+
+Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen, ReviewScreen, FailedScanScreen });
