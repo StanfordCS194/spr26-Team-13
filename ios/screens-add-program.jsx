@@ -82,17 +82,16 @@ const AddProgramScreen = ({ onCamera, onUpload, onClose }) => (
 // ─────────────────────────────────────────────────────────────
 // 2. Camera — UI over a real camera view.
 //
-// The big rotated "paper" rectangle in the middle is a placeholder for
-// the camera feed. When the backend wires up a real camera, swap the
-// paper div for a <video> element bound to getUserMedia (or whatever
-// they end up using). The rest of the chrome — close, flash, reticles,
-// hint pill, capture button — stays the same.
+// The rotated "paper" rectangle in the middle is a placeholder for the
+// camera feed. When the backend wires up a real camera, swap the paper
+// div for a <video> element bound to getUserMedia (or whatever they end
+// up using). The rest of the chrome — close, flash, capture — stays.
 // ─────────────────────────────────────────────────────────────
 const CameraScreen = ({ onCapture, onClose }) => {
   const lines = window.PROGRAM_SAMPLE_LINES || [];
   return (
     <Screen padTop={0} padBottom={0} style={{
-      display: 'flex', flexDirection: 'column', background: '#000',
+      display: 'flex', flexDirection: 'column', background: 'var(--camera-bg, #000)',
     }}>
       {/* Viewfinder area — the placeholder lives in here. */}
       <div style={{
@@ -100,7 +99,7 @@ const CameraScreen = ({ onCapture, onClose }) => {
         background: 'linear-gradient(180deg, #1a1a1a, #0a0a0a)',
         overflow: 'hidden',
       }}>
-        {/* Placeholder for the camera feed — fake "paper" page. */}
+        {/* Fake "paper" with rows — looks like a program sheet. */}
         <div style={{
           position: 'absolute', top: 80, left: 30, right: 30, bottom: 120,
           background: '#f4f1ea', borderRadius: 4, padding: 16,
@@ -109,70 +108,33 @@ const CameraScreen = ({ onCapture, onClose }) => {
           fontFamily: 'var(--font-mono)', fontSize: 9, color: '#3a3a3a',
           lineHeight: 1.6, overflow: 'hidden',
         }}>
-          <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>
-            WEEK 3 — FULL BODY 1
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 6 }}>FULL BODY</div>
           <div style={{ borderBottom: '1px solid #ccc', marginBottom: 6 }} />
           {lines.map((l, i) => <div key={i}>{l}</div>)}
         </div>
 
-        {/* Corner reticles framing the program region. */}
-        {[[40, 40], [40, 'auto', 'auto', 40], ['auto', 40, 40, 'auto'], ['auto', 'auto', 40, 40]].map((c, i) => (
-          <div key={i} style={{
-            position: 'absolute',
-            top: c[0], right: c[1], bottom: c[2], left: c[3],
-            width: 28, height: 28,
-            borderTop:    c[0] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderBottom: c[2] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderLeft:   c[3] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderRight:  c[1] !== 'auto' ? '2px solid var(--accent)' : 'none',
-            borderTopLeftRadius:     c[0] !== 'auto' && c[3] !== 'auto' ? 8 : 0,
-            borderTopRightRadius:    c[0] !== 'auto' && c[1] !== 'auto' ? 8 : 0,
-            borderBottomLeftRadius:  c[2] !== 'auto' && c[3] !== 'auto' ? 8 : 0,
-            borderBottomRightRadius: c[2] !== 'auto' && c[1] !== 'auto' ? 8 : 0,
-          }} />
-        ))}
-
-        {/* AI hint pill. */}
-        <div style={{
-          position: 'absolute', top: 70, left: 0, right: 0,
-          display: 'flex', justifyContent: 'center',
-        }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '8px 14px', borderRadius: 9999,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid rgba(197,242,62,0.3)',
-            color: 'var(--accent)', fontSize: 12, fontWeight: 600,
-          }}>
-            <Icon name="sparkle" size={14} stroke="var(--accent)" />
-            Program detected — hold steady
-          </div>
-        </div>
-
-        {/* Top close + flash. */}
+        {/* Top close + flash chips. */}
         <button onClick={onClose} className="press" style={{
           position: 'absolute', top: 60, left: 20,
           width: 40, height: 40, borderRadius: 9999,
-          background: 'rgba(0,0,0,0.6)',
+          background: 'var(--cam-chip-bg)',
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-1)',
+          border: '1px solid var(--cam-chip-border)', color: 'var(--cam-chip-fg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="x" size={18} /></button>
+        }}><Icon name="x" size={18} stroke="var(--cam-chip-fg)" /></button>
         <button className="press" style={{
           position: 'absolute', top: 60, right: 20,
           width: 40, height: 40, borderRadius: 9999,
-          background: 'rgba(0,0,0,0.6)',
+          background: 'var(--cam-chip-bg)',
           backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-1)',
+          border: '1px solid var(--cam-chip-border)', color: 'var(--cam-chip-fg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="flash" size={18} /></button>
+        }}><Icon name="flash" size={18} stroke="var(--cam-chip-fg)" /></button>
       </div>
 
-      {/* Bottom controls — gallery, capture, flip. */}
+      {/* Bottom controls — gallery, capture, spacer. */}
       <div style={{
-        padding: '24px 20px 36px', background: '#000',
+        padding: '24px 20px 36px', background: 'var(--camera-bg, #000)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-around',
       }}>
         <button className="press" style={{
@@ -195,12 +157,8 @@ const CameraScreen = ({ onCapture, onClose }) => {
           }} />
         </button>
 
-        <button className="press" style={{
-          width: 52, height: 52, borderRadius: 14,
-          background: 'var(--surface-2)', border: '1px solid var(--hairline)',
-          color: 'var(--text-1)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><Icon name="rotate" size={20} /></button>
+        {/* Spacer to keep the capture button centered. */}
+        <div style={{ width: 52, height: 52 }} />
       </div>
     </Screen>
   );
