@@ -69,7 +69,6 @@ function App() {
       <AddProgramScreen
         onCamera={() => setScreen('camera')}
         onUpload={() => setScreen('parsing')}
-        onLibrary={() => setScreen('parsing')}
         onClose={() => setScreen('done')}
       />
     ),
