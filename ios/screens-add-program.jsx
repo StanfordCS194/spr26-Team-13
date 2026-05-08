@@ -429,4 +429,51 @@ const ReviewScreen = ({ program, onConfirm, onClose }) => {
   );
 };
 
-Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen, ReviewScreen });
+// ─────────────────────────────────────────────────────────────
+// 5. Failed scan — when the parser couldn't read the source.
+// ─────────────────────────────────────────────────────────────
+const FailedScanScreen = ({ onRetry, onClose }) => (
+  <Screen padTop={56} padBottom={40} style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: '0 20px 20px' }}>
+      <button onClick={onClose} className="press" style={{
+        width: 36, height: 36, borderRadius: 9999, background: 'var(--surface-1)',
+        border: '1px solid var(--hairline)', color: 'var(--text-1)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+      }}><Icon name="x" size={16} /></button>
+    </div>
+
+    <div style={{
+      flex: 1, padding: '0 32px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      textAlign: 'center',
+    }}>
+      <div style={{
+        width: 64, height: 64, borderRadius: 32,
+        background: 'rgba(255,138,122,0.10)',
+        border: '1px solid rgba(255,138,122,0.25)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginBottom: 24,
+        fontSize: 30, fontWeight: 700, color: '#FF8A7A', lineHeight: 1,
+      }}>!</div>
+
+      <h1 style={{
+        fontSize: 24, fontWeight: 600, letterSpacing: -0.4,
+        margin: 0, marginBottom: 10,
+      }}>Couldn't read this one</h1>
+      <p style={{
+        fontSize: 14, color: 'var(--text-2)',
+        margin: 0, lineHeight: 1.5, maxWidth: 280,
+      }}>
+        The image was too blurry or the format didn't match what we recognize.
+        Try again with a clearer shot, or enter it manually.
+      </p>
+    </div>
+
+    <div style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Button onClick={onRetry}>Try again</Button>
+      <Button variant="ghost" onClick={onClose}>Back to home</Button>
+    </div>
+  </Screen>
+);
+
+Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen, ReviewScreen, FailedScanScreen });
