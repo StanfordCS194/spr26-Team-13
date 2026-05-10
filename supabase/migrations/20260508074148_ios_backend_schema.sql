@@ -258,6 +258,11 @@ on public.profiles for select
 to authenticated
 using ((select auth.uid()) is not null and id = (select auth.uid()));
 
+create policy "profiles_insert_own"
+on public.profiles for insert
+to authenticated
+with check (id = (select auth.uid()));
+
 create policy "profiles_update_own"
 on public.profiles for update
 to authenticated
