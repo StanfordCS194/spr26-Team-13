@@ -271,6 +271,40 @@ def test_program_review_api_requires_upload():
     assert response.get_json() == {"error": "Upload an image or document to process."}
 
 
+def test_assistant_chat_api_returns_response(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    response = client.post(
+        "/api/assistant/chat",
+        json={"message": "What's my squat PR?"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "response": "Your back squat PR is 315 pounds for 2 reps.",
+        "action": {
+            "action": "get_pr",
+            "exercise_name": "back squat",
+            "weight": None,
+            "reps": None,
+            "duration_seconds": None,
+        },
+    }
+
+
+def test_assistant_chat_api_requires_message():
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post("/api/assistant/chat", json={})
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Message is required."}
+
+
 def test_program_review_demo_shows_unassigned_exercises_when_blocks_exist(monkeypatch):
     app = create_app()
     client = app.test_client()
