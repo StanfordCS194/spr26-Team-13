@@ -10,6 +10,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+from src.assistant.service import handle_message
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
 from src.ingestion.llm_normalizer import (
@@ -69,6 +70,18 @@ def create_app() -> Flask:
                 }
             )
         except (UnsupportedProgramSourceError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.post("/api/assistant/chat")
+    def assistant_chat_api():
+        payload = request.get_json(silent=True) or {}
+        message = str(payload.get("message", "")).strip()
+        if not message:
+            return jsonify({"error": "Message is required."}), 400
+
+        try:
+            return jsonify(handle_message(message))
+        except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
     return app
