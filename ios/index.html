@@ -20,12 +20,15 @@
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Auth stub — kept plain JS so it's easy to swap with a real backend later -->
+  <!-- Supabase client + auth/data adapters -->
+  <script src="supabase.js"></script>
   <script src="auth.js"></script>
-
-  <!-- Sample placeholder data — backend will replace this -->
   <script src="data.js"></script>
+
+  <!-- Backend ingestion adapter shared with the iOS upload flow -->
+  <script src="ingestion.js"></script>
 
   <!-- UI primitives, then the iOS frame, then the screens, then the app -->
   <script type="text/babel" src="ui.jsx"></script>

@@ -14,14 +14,16 @@ const ProgramViewScreen = ({
   onDiscard,
 }) => {
   const source = program || window.PROGRAM_DETAIL || {};
-  const exercises = source.exercises || [];
+  const exercises = window.getProgramExercises ? window.getProgramExercises(source) : (source.exercises || []);
+  const days = window.getProgramDays ? window.getProgramDays(source) : [];
+  const setCount = window.getProgramSetCount ? window.getProgramSetCount(source) : 0;
+  const ScheduleView = window.ProgramScheduleView;
 
   // Pull a friendly name. Falls back to the first program in PROGRAMS if the
   // detail object doesn't have one — same as the prototype.
   const fallbackProgram = (window.PROGRAMS || [])[0];
   const initialName = source.name || (fallbackProgram && fallbackProgram.name) || 'Powerbuilding 5×';
 
-  const [openRow, setOpenRow] = React.useState(null);
   const [name, setName] = React.useState(initialName);
   const [editing, setEditing] = React.useState(false);
   const [confirmDiscard, setConfirmDiscard] = React.useState(false);
@@ -34,8 +36,12 @@ const ProgramViewScreen = ({
     }
   }, [editing]);
 
+  React.useEffect(() => {
+    setName(initialName);
+  }, [initialName]);
+
   return (
-    <Screen padTop={64} padBottom={130}>
+    <Screen padTop={64} padBottom={0} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Top chrome — back / status pill / discard. */}
       <div style={{
         padding: '0 20px 16px',
@@ -167,82 +173,18 @@ const ProgramViewScreen = ({
           </h1>
         )}
         <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
-          {exercises.length} lifts · tap title to rename
+          {days.length || 1} days · {exercises.length} lifts · {setCount} sets
         </p>
       </div>
 
-      {/* Exercise table — same component shape as ReviewScreen. */}
-      <div style={{ padding: '0 20px' }}>
-        <Card padding={0}>
-          {exercises.map((ex, i) => {
-            const isOpen = openRow === i;
-            const hasNote = !!ex.note;
-            return (
-              <div key={i} style={{
-                borderBottom: i < exercises.length - 1 ? '1px solid var(--hairline)' : 'none',
-              }}>
-                <div
-                  onClick={() => hasNote && setOpenRow(isOpen ? null : i)}
-                  className={hasNote ? 'press' : ''}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1.6fr 36px 44px 56px 16px',
-                    gap: 8, alignItems: 'center',
-                    padding: '13px 14px',
-                    cursor: hasNote ? 'pointer' : 'default',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 500, letterSpacing: -0.1, lineHeight: 1.25,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {ex.name}
-                    </div>
-                  </div>
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.sets}</div>
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.reps}</div>
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--accent)', textAlign: 'right', fontWeight: 600 }}>{ex.load}</div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    {hasNote ? (
-                      <Icon
-                        name="chevron-down"
-                        size={13}
-                        stroke="var(--text-3)"
-                        style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}
-                      />
-                    ) : (
-                      <span style={{ width: 13, height: 13, display: 'block' }} />
-                    )}
-                  </div>
-                </div>
-
-                {hasNote && (
-                  <div style={{ maxHeight: isOpen ? 200 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
-                    <div style={{
-                      padding: '10px 14px 14px 14px',
-                      fontSize: 12, color: 'var(--text-2)', lineHeight: 1.45,
-                      borderTop: '1px solid var(--hairline)',
-                    }}>
-                      <div className="mono" style={{
-                        fontSize: 9, color: 'var(--text-3)', letterSpacing: 0.5,
-                        textTransform: 'uppercase', marginBottom: 4,
-                      }}>Notes</div>
-                      {ex.note}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </Card>
-      </div>
+      {ScheduleView ? <ScheduleView source={source} /> : <div style={{ flex: 1 }} />}
 
       {/* Sticky CTA — Start vs Finish workout. */}
       <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        padding: '16px 20px 24px',
-        background: 'linear-gradient(180deg, transparent, var(--bg) 30%)',
+        padding: '14px 20px 24px',
+        background: 'var(--bg)',
+        borderTop: '1px solid var(--hairline)',
+        flexShrink: 0,
       }}>
         {loadedToGlasses ? (
           <Button

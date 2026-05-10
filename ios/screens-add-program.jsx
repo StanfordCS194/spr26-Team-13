@@ -1,83 +1,102 @@
 // Add-program flow screens: Entry → Camera → Parsing → Review (or Failed scan).
 //
-// Frontend only. The camera screen draws chrome over a placeholder where the
-// camera feed will eventually render; parsing runs on a fake timer; review
-// reads from window.PARSED_PROGRAM. Backend swaps these in later.
+// The upload/camera entry points post files to the same Flask ingestion API
+// used by the desktop app, then adapt the returned TrainingProgram for these
+// compact iOS review screens.
 
 // Reuses the Screen wrapper defined in screens-signup.jsx.
 
 // ─────────────────────────────────────────────────────────────
 // 1. Entry — pick a source.
 // ─────────────────────────────────────────────────────────────
-const AddProgramScreen = ({ onCamera, onUpload, onClose }) => (
-  <Screen padTop={64} padBottom={32}>
-    <div style={{ padding: '0 20px 16px' }}>
-      <button onClick={onClose} className="press" style={{
-        width: 36, height: 36, borderRadius: 9999, background: 'var(--surface-1)',
-        border: '1px solid var(--hairline)', color: 'var(--text-1)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-      }}><Icon name="arrow-left" size={16} /></button>
-    </div>
+const ACCEPTED_PROGRAM_INPUTS = 'image/*,.pdf,.csv,.xlsx,.xls,.txt';
 
-    <div style={{ padding: '0 20px 16px' }}>
-      <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.5, margin: 0 }}>
-        Add a program
-      </h1>
-      <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, marginTop: 4 }}>
-        Drop in any program. We'll parse and structure it.
-      </p>
-    </div>
+const AddProgramScreen = ({ onCamera, onFileSelected, onClose }) => {
+  const uploadRef = React.useRef(null);
 
-    <div style={{
-      padding: '12px 20px', display: 'flex',
-      flexDirection: 'column', gap: 10,
-    }}>
-      {/* Hero — Take a photo */}
-      <button onClick={onCamera} className="press" style={{
-        position: 'relative', overflow: 'hidden',
-        padding: 22, borderRadius: 'var(--r-card-lg)',
-        background: 'var(--hero-bg)',
-        border: '1px solid var(--hero-border)',
-        color: 'var(--text-1)', textAlign: 'left', cursor: 'pointer',
-        fontFamily: 'var(--font-sans)',
+  const handleFiles = (files) => {
+    if (!files || !files.length) return;
+    onFileSelected && onFileSelected(files[0]);
+  };
+
+  return (
+    <Screen padTop={64} padBottom={32}>
+      <input
+        ref={uploadRef}
+        type="file"
+        accept={ACCEPTED_PROGRAM_INPUTS}
+        onChange={(e) => handleFiles(e.target.files)}
+        style={{ display: 'none' }}
+      />
+
+      <div style={{ padding: '0 20px 16px' }}>
+        <button onClick={onClose} className="press" style={{
+          width: 36, height: 36, borderRadius: 9999, background: 'var(--surface-1)',
+          border: '1px solid var(--hairline)', color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}><Icon name="arrow-left" size={16} /></button>
+      </div>
+
+      <div style={{ padding: '0 20px 16px' }}>
+        <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.5, margin: 0 }}>
+          Add a program
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, marginTop: 4 }}>
+          Drop in any program. We'll parse and structure it.
+        </p>
+      </div>
+
+      <div style={{
+        padding: '12px 20px', display: 'flex',
+        flexDirection: 'column', gap: 10,
       }}>
-        <div style={{
-          width: 48, height: 48, borderRadius: 14, background: 'var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-          position: 'relative',
+        {/* Hero — Take a photo */}
+        <button onClick={onCamera} className="press" style={{
+          position: 'relative', overflow: 'hidden',
+          padding: 22, borderRadius: 'var(--r-card-lg)',
+          background: 'var(--hero-bg)',
+          border: '1px solid var(--hero-border)',
+          color: 'var(--text-1)', textAlign: 'left', cursor: 'pointer',
+          fontFamily: 'var(--font-sans)',
         }}>
-          <Icon name="camera" size={22} stroke="var(--on-accent)" strokeWidth={2} />
-        </div>
-        <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4, position: 'relative' }}>
-          Take a photo
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.4, position: 'relative' }}>
-          Snap your spreadsheet, whiteboard, or coach's notebook.
-        </div>
-      </button>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14, background: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+            position: 'relative',
+          }}>
+            <Icon name="camera" size={22} stroke="var(--on-accent)" strokeWidth={2} />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4, position: 'relative' }}>
+            Take a photo
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.4, position: 'relative' }}>
+            Snap your spreadsheet, whiteboard, or coach's notebook.
+          </div>
+        </button>
 
-      {/* Upload a file */}
-      <button onClick={onUpload} className="press" style={{
-        padding: 22, borderRadius: 'var(--r-card-lg)',
-        background: 'var(--surface-1)', border: '1px solid var(--hairline)',
-        color: 'var(--text-1)', textAlign: 'left', cursor: 'pointer',
-        fontFamily: 'var(--font-sans)',
-      }}>
-        <div style={{
-          width: 48, height: 48, borderRadius: 14, background: 'var(--surface-2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-          border: '1px solid var(--hairline)',
+        {/* Upload a file */}
+        <button onClick={() => uploadRef.current && uploadRef.current.click()} className="press" style={{
+          padding: 22, borderRadius: 'var(--r-card-lg)',
+          background: 'var(--surface-1)', border: '1px solid var(--hairline)',
+          color: 'var(--text-1)', textAlign: 'left', cursor: 'pointer',
+          fontFamily: 'var(--font-sans)',
         }}>
-          <Icon name="upload" size={20} />
-        </div>
-        <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Upload a file</div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.4 }}>
-          PDF, image, spreadsheet, or plain text from your library.
-        </div>
-      </button>
-    </div>
-  </Screen>
-);
+          <div style={{
+            width: 48, height: 48, borderRadius: 14, background: 'var(--surface-2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+            border: '1px solid var(--hairline)',
+          }}>
+            <Icon name="upload" size={20} />
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Upload a file</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.4 }}>
+            PDF, image, spreadsheet, or plain text from your library.
+          </div>
+        </button>
+      </div>
+    </Screen>
+  );
+};
 
 // ─────────────────────────────────────────────────────────────
 // 2. Camera — UI over a real camera view.
@@ -87,12 +106,36 @@ const AddProgramScreen = ({ onCamera, onUpload, onClose }) => (
 // div for a <video> element bound to getUserMedia (or whatever they end
 // up using). The rest of the chrome — close, flash, capture — stays.
 // ─────────────────────────────────────────────────────────────
-const CameraScreen = ({ onCapture, onClose }) => {
+const CameraScreen = ({ onFileSelected, onClose }) => {
   const lines = window.PROGRAM_SAMPLE_LINES || [];
+  const cameraRef = React.useRef(null);
+  const galleryRef = React.useRef(null);
+
+  const handleFiles = (files) => {
+    if (!files || !files.length) return;
+    onFileSelected && onFileSelected(files[0]);
+  };
+
   return (
     <Screen padTop={0} padBottom={0} style={{
       display: 'flex', flexDirection: 'column', background: 'var(--camera-bg, #000)',
     }}>
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={(e) => handleFiles(e.target.files)}
+        style={{ display: 'none' }}
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept={ACCEPTED_PROGRAM_INPUTS}
+        onChange={(e) => handleFiles(e.target.files)}
+        style={{ display: 'none' }}
+      />
+
       {/* Viewfinder area — the placeholder lives in here. */}
       <div style={{
         flex: 1, position: 'relative',
@@ -137,14 +180,14 @@ const CameraScreen = ({ onCapture, onClose }) => {
         padding: '24px 20px 36px', background: 'var(--camera-bg, #000)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-around',
       }}>
-        <button className="press" style={{
+        <button onClick={() => galleryRef.current && galleryRef.current.click()} className="press" style={{
           width: 52, height: 52, borderRadius: 14,
           background: 'var(--surface-2)', border: '1px solid var(--hairline)',
           color: 'var(--text-1)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}><Icon name="image" size={20} /></button>
 
-        <button onClick={onCapture} className="press" style={{
+        <button onClick={() => cameraRef.current && cameraRef.current.click()} className="press" style={{
           width: 78, height: 78, borderRadius: '50%',
           background: 'transparent',
           border: '3px solid rgba(255,255,255,0.3)',
@@ -165,34 +208,84 @@ const CameraScreen = ({ onCapture, onClose }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 3. Parsing — AI phases animation.
-//
-// Walks through the phases on a fake timer and then advances. When the
-// real parser ships, replace the setTimeout chain with something that
-// reflects actual progress events from the backend.
+// 3. Parsing — AI phases animation backed by the real ingestion request.
 // ─────────────────────────────────────────────────────────────
-const ParsingScreen = ({ onDone }) => {
+const ParsingScreen = ({ file, onDone, onFailed, onCancel }) => {
   const phases = [
-    'Reading the image',
+    'Reading the source',
     'Identifying exercises',
     'Parsing sets, reps, percentages',
     'Structuring the schedule',
   ];
   const [phase, setPhase] = React.useState(0);
+  const [parsedDetail, setParsedDetail] = React.useState(null);
+  const [parseError, setParseError] = React.useState(null);
+  const [previewUrl, setPreviewUrl] = React.useState(null);
 
   React.useEffect(() => {
-    if (phase < phases.length - 1) {
-      const t = setTimeout(() => setPhase(phase + 1), 850);
+    if (!file) {
+      const message = 'Choose a program file before parsing.';
+      setParseError(message);
+      onFailed && onFailed(message);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setPhase(0);
+    setParsedDetail(null);
+    setParseError(null);
+
+    parseProgramFile(file, { signal: controller.signal })
+      .then((payload) => {
+        const detail = canonicalToIOSProgram(payload.program);
+        setParsedDetail(detail);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        const message = err.message || 'Program parsing failed.';
+        setParseError(message);
+        onFailed && onFailed(message);
+      });
+
+    return () => controller.abort();
+  }, [file]);
+
+  React.useEffect(() => {
+    if (!file || !file.type || !file.type.startsWith('image/')) {
+      setPreviewUrl(null);
+      return undefined;
+    }
+
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  React.useEffect(() => {
+    if (parseError) return undefined;
+    if (parsedDetail && phase >= phases.length - 1) {
+      const t = setTimeout(() => onDone && onDone(parsedDetail), 450);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(onDone, 900);
-    return () => clearTimeout(t);
-  }, [phase]);
+    if (phase < phases.length - 1) {
+      const t = setTimeout(() => setPhase((current) => Math.min(current + 1, phases.length - 1)), 850);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [phase, parsedDetail, parseError]);
 
   const lines = window.PROGRAM_SAMPLE_LINES || [];
 
   return (
     <Screen padTop={64} padBottom={40} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0 20px 14px' }}>
+        <button onClick={onCancel} className="press" style={{
+          width: 36, height: 36, borderRadius: 9999, background: 'var(--surface-1)',
+          border: '1px solid var(--hairline)', color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}><Icon name="arrow-left" size={16} /></button>
+      </div>
+
       {/* Tiny preview thumb of the captured page with a sweeping scan line. */}
       <div style={{ padding: '0 20px 24px', display: 'flex', justifyContent: 'center' }}>
         <div style={{
@@ -202,13 +295,25 @@ const ParsingScreen = ({ onDone }) => {
           padding: 12, fontFamily: 'var(--font-mono)', fontSize: 7, color: '#444',
           lineHeight: 1.5,
         }}>
-          <div style={{ fontWeight: 700, fontSize: 8, marginBottom: 4 }}>WK 3 · FB1</div>
-          <div style={{ borderBottom: '1px solid #ccc', marginBottom: 4 }} />
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} style={{ marginBottom: 1 }}>
-              {(lines[i % Math.max(lines.length, 1)] || '').slice(0, 22)}
-            </div>
-          ))}
+          {previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={file ? file.name : 'Program preview'}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
+            />
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 8, marginBottom: 4 }}>
+                {file ? file.name.slice(0, 24) : 'PROGRAM SOURCE'}
+              </div>
+              <div style={{ borderBottom: '1px solid #ccc', marginBottom: 4 }} />
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} style={{ marginBottom: 1 }}>
+                  {(lines[i % Math.max(lines.length, 1)] || '').slice(0, 22)}
+                </div>
+              ))}
+            </>
+          )}
           <div className="scan-sweep" style={{
             position: 'absolute', left: 0, right: 0, height: 30,
             background: 'linear-gradient(180deg, transparent, rgba(197,242,62,0.6), transparent)',
@@ -223,7 +328,7 @@ const ParsingScreen = ({ onDone }) => {
           margin: 0, marginBottom: 8,
         }}>Parsing your program</h1>
         <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, marginBottom: 28 }}>
-          Hang tight — this usually takes a few seconds.
+          {file ? file.name : 'Waiting for a source file'}
         </p>
 
         <div style={{
@@ -261,13 +366,24 @@ const ParsingScreen = ({ onDone }) => {
             </div>
           ))}
         </div>
+
+        {parseError && (
+          <div style={{
+            margin: '20px auto 0', maxWidth: 280, padding: 14,
+            borderRadius: 14, background: 'rgba(255,138,122,0.10)',
+            border: '1px solid rgba(255,138,122,0.25)',
+            color: '#FFB0A5', fontSize: 12, lineHeight: 1.4,
+          }}>
+            {parseError}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: '0 24px', textAlign: 'center' }}>
         <p style={{
           fontSize: 11, color: 'var(--text-3)', margin: 0,
           fontFamily: 'var(--font-mono)',
-        }}>PROCESSING ON-DEVICE · NO DATA LEAVES YOUR PHONE</p>
+        }}>PROCESSING THROUGH LOCAL FLASK INGESTION</p>
       </div>
     </Screen>
   );
@@ -275,18 +391,14 @@ const ParsingScreen = ({ onDone }) => {
 
 // ─────────────────────────────────────────────────────────────
 // 4. Review — confirm parsed program before saving.
-//
-// Reads from window.PARSED_PROGRAM (an alias for PROGRAM_DETAIL). Tap
-// the title to rename. Tap any row with a coach note to expand it.
-// Bottom has Discard + Save program. Backend can mutate the global or
-// pass a `program` prop — either works.
 // ─────────────────────────────────────────────────────────────
-const ReviewScreen = ({ program, onConfirm, onClose }) => {
+const ReviewScreen = ({ program, saving = false, error = null, onConfirm, onClose }) => {
   const source = program || window.PARSED_PROGRAM || {};
-  const exercises = source.exercises || [];
+  const days = getProgramDays(source);
+  const exercises = getProgramExercises(source);
+  const setCount = getProgramSetCount(source);
   const initialName = source.name || 'Powerbuilding 5×';
 
-  const [openRow, setOpenRow] = React.useState(null);
   const [name, setName] = React.useState(initialName);
   const [editing, setEditing] = React.useState(false);
   const inputRef = React.useRef(null);
@@ -298,8 +410,12 @@ const ReviewScreen = ({ program, onConfirm, onClose }) => {
     }
   }, [editing]);
 
+  React.useEffect(() => {
+    setName(initialName);
+  }, [initialName]);
+
   return (
-    <Screen padTop={64} padBottom={130}>
+    <Screen padTop={64} padBottom={0} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '0 20px 18px' }}>
         <div style={{
           fontSize: 12, color: 'var(--accent)', marginBottom: 6,
@@ -342,97 +458,299 @@ const ReviewScreen = ({ program, onConfirm, onClose }) => {
           </h1>
         )}
         <p style={{ fontSize: 13, color: 'var(--text-2)', margin: 0, lineHeight: 1.5 }}>
-          {exercises.length} lifts · tap title to rename
+          {days.length} days · {exercises.length} lifts · {setCount} sets
         </p>
       </div>
 
-      <div style={{ padding: '0 20px' }}>
-        <Card padding={0}>
-          {exercises.map((ex, i) => {
-            const isOpen = openRow === i;
-            const hasNote = !!ex.note;
-            return (
-              <div key={i} style={{
-                borderBottom: i < exercises.length - 1 ? '1px solid var(--hairline)' : 'none',
-              }}>
-                <div
-                  onClick={() => hasNote && setOpenRow(isOpen ? null : i)}
-                  className={hasNote ? 'press' : ''}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1.6fr 36px 44px 56px 16px',
-                    gap: 8, alignItems: 'center',
-                    padding: '13px 14px',
-                    cursor: hasNote ? 'pointer' : 'default',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 500, letterSpacing: -0.1, lineHeight: 1.25,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {ex.name}
-                    </div>
-                  </div>
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.sets}</div>
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{ex.reps}</div>
-                  <div className="mono" style={{ fontSize: 12, color: 'var(--accent)', textAlign: 'right', fontWeight: 600 }}>{ex.load}</div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    {hasNote ? (
-                      <Icon
-                        name="chevron-down"
-                        size={13}
-                        stroke="var(--text-3)"
-                        style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}
-                      />
-                    ) : (
-                      <span style={{ width: 13, height: 13, display: 'block' }} />
-                    )}
-                  </div>
-                </div>
+      <ProgramScheduleView source={source} />
 
-                {hasNote && (
-                  <div style={{ maxHeight: isOpen ? 200 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
-                    <div style={{
-                      padding: '10px 14px 14px 14px',
-                      fontSize: 12, color: 'var(--text-2)', lineHeight: 1.45,
-                      borderTop: '1px solid var(--hairline)',
-                    }}>
-                      <div className="mono" style={{
-                        fontSize: 9, color: 'var(--text-3)', letterSpacing: 0.5,
-                        textTransform: 'uppercase', marginBottom: 4,
-                      }}>Notes</div>
-                      {ex.note}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </Card>
-      </div>
-
-      {/* Sticky-ish bottom CTA. */}
       <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        padding: '16px 20px 24px',
-        background: 'linear-gradient(180deg, transparent, var(--bg) 30%)',
+        padding: '14px 20px 24px',
+        background: 'var(--bg)',
+        borderTop: '1px solid var(--hairline)',
+        flexShrink: 0,
       }}>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>Discard</Button>
-          <Button onClick={() => onConfirm && onConfirm({ name })} iconRight="download" style={{ flex: 2 }}>
-            Save program
+          <Button variant="ghost" onClick={onClose} disabled={saving} style={{ flex: 1 }}>Discard</Button>
+          <Button onClick={() => onConfirm && onConfirm({ name })} iconRight="download" disabled={saving} style={{ flex: 2 }}>
+            {saving ? 'Saving...' : 'Save program'}
           </Button>
         </div>
+        {error && (
+          <div style={{ color: '#FF8B7C', fontSize: 12, lineHeight: 1.35, marginTop: 10 }}>
+            {error}
+          </div>
+        )}
       </div>
     </Screen>
   );
 };
 
+const ProgramScheduleView = ({ source }) => {
+  const days = getProgramDays(source);
+
+  if (!days.length) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 20px 20px' }}>
+        <Card padding={18}>
+          <div style={{ color: 'var(--text-2)', fontSize: 13, lineHeight: 1.45 }}>
+            No exercises were returned for this program.
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="no-scrollbar" style={{
+      flex: 1, minHeight: 0, overflowY: 'auto',
+      padding: '0 20px 20px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+    }}>
+      {days.map((day, dayIndex) => (
+        <DaySection key={day.id || dayIndex} day={day} dayIndex={dayIndex} />
+      ))}
+    </div>
+  );
+};
+
+const DaySection = ({ day, dayIndex }) => {
+  const blocks = day.blocks || [];
+  const exercises = blocks.flatMap((block) => block.exercises || []);
+  const setCount = exercises.reduce((sum, exercise) => sum + normalizeSetCount(exercise.sets), 0);
+
+  return (
+    <section style={{
+      background: 'var(--surface-1)',
+      border: '1px solid var(--hairline)',
+      borderRadius: 'var(--r-card)',
+      overflow: 'hidden',
+      flexShrink: 0,
+    }}>
+      <div style={{
+        padding: '14px 16px',
+        background: 'var(--surface-2)',
+        borderBottom: '1px solid var(--hairline)',
+      }}>
+        <div className="mono" style={{
+          fontSize: 10, color: 'var(--accent)', letterSpacing: 0.5,
+          textTransform: 'uppercase', marginBottom: 4,
+        }}>
+          Week {day.weekNumber || 1} · Day {dayIndex + 1}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 17, fontWeight: 650, lineHeight: 1.2, minWidth: 0 }}>
+            {day.title || `Day ${dayIndex + 1}`}
+          </div>
+          <div className="mono" style={{
+            color: 'var(--text-3)', fontSize: 11, whiteSpace: 'nowrap', paddingTop: 2,
+          }}>
+            {exercises.length} lifts · {setCount} sets
+          </div>
+        </div>
+        {day.notes && (
+          <div style={{ marginTop: 8, color: 'var(--text-2)', fontSize: 12, lineHeight: 1.4 }}>
+            {day.notes}
+          </div>
+        )}
+      </div>
+
+      {blocks.map((block, blockIndex) => (
+        <BlockSection
+          key={block.id || blockIndex}
+          block={block}
+          isLast={blockIndex === blocks.length - 1}
+        />
+      ))}
+    </section>
+  );
+};
+
+const BlockSection = ({ block, isLast }) => (
+  <div style={{
+    borderBottom: isLast ? 'none' : '1px solid var(--hairline)',
+  }}>
+    <div style={{
+      padding: '11px 14px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      background: 'rgba(197,242,62,0.045)',
+      borderBottom: '1px solid var(--hairline)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <Icon name="columns" size={13} stroke="var(--accent)" />
+        <span style={{
+          color: 'var(--text-1)', fontSize: 12.5, fontWeight: 700,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {block.title || 'Main'}
+        </span>
+      </div>
+      {block.executionStyle && (
+        <span className="mono" style={{
+          fontSize: 9.5, color: 'var(--accent)', whiteSpace: 'nowrap',
+          padding: '3px 7px', borderRadius: 999,
+          border: '1px solid rgba(197,242,62,0.24)',
+          background: 'rgba(197,242,62,0.08)',
+        }}>
+          {String(block.executionStyle).replace('_', ' ')}
+        </span>
+      )}
+    </div>
+
+    {(block.exercises || []).map((exercise, index) => (
+      <MobileExerciseRow
+        key={exercise.id || `${block.id}-${index}`}
+        exercise={exercise}
+        isLast={index === (block.exercises || []).length - 1}
+      />
+    ))}
+  </div>
+);
+
+const MobileExerciseRow = ({ exercise, isLast }) => {
+  const [open, setOpen] = React.useState(false);
+  const hasNote = !!exercise.note;
+
+  return (
+    <div style={{
+      borderBottom: isLast ? 'none' : '1px solid var(--hairline)',
+      background: 'var(--surface-1)',
+    }}>
+      <button
+        onClick={() => hasNote && setOpen(!open)}
+        className={hasNote ? 'press' : ''}
+        style={{
+          width: '100%',
+          padding: '13px 14px',
+          background: 'transparent',
+          border: 'none',
+          color: 'var(--text-1)',
+          textAlign: 'left',
+          fontFamily: 'var(--font-sans)',
+          cursor: hasNote ? 'pointer' : 'default',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 14.5, fontWeight: 600, lineHeight: 1.25,
+              overflowWrap: 'anywhere',
+            }}>
+              {exercise.name}
+            </div>
+            <div style={{
+              display: 'flex', gap: 6, flexWrap: 'wrap',
+              marginTop: 9,
+            }}>
+              <MetricChip label="sets" value={exercise.sets} accent />
+              <MetricChip label="reps" value={exercise.reps} />
+              <MetricChip label="load" value={exercise.load} accent={exercise.load && exercise.load !== '-'} />
+              {exercise.rest && exercise.rest !== '-' && <MetricChip label="rest" value={exercise.rest} />}
+            </div>
+          </div>
+          {hasNote && (
+            <Icon
+              name="chevron-down"
+              size={14}
+              stroke="var(--text-3)"
+              style={{ marginTop: 2, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}
+            />
+          )}
+        </div>
+      </button>
+
+      {hasNote && (
+        <div style={{ maxHeight: open ? 180 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
+          <div style={{
+            padding: '0 14px 14px',
+            color: 'var(--text-2)',
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}>
+            <div className="mono" style={{
+              color: 'var(--text-3)', fontSize: 9, textTransform: 'uppercase',
+              letterSpacing: 0.5, marginBottom: 5,
+            }}>
+              Notes
+            </div>
+            {exercise.note}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MetricChip = ({ label, value, accent }) => (
+  <span style={{
+    minWidth: 0,
+    maxWidth: '100%',
+    display: 'inline-flex',
+    alignItems: 'baseline',
+    gap: 4,
+    padding: '5px 7px',
+    borderRadius: 9,
+    background: accent ? 'rgba(197,242,62,0.10)' : 'var(--surface-2)',
+    border: '1px solid ' + (accent ? 'rgba(197,242,62,0.22)' : 'var(--hairline)'),
+  }}>
+    <span className="mono" style={{
+      color: accent ? 'var(--accent)' : 'var(--text-1)',
+      fontSize: 12,
+      fontWeight: 700,
+      overflowWrap: 'anywhere',
+    }}>
+      {value || '-'}
+    </span>
+    <span className="mono" style={{
+      color: 'var(--text-3)',
+      fontSize: 8.5,
+      textTransform: 'uppercase',
+      letterSpacing: 0.35,
+    }}>
+      {label}
+    </span>
+  </span>
+);
+
+function getProgramDays(source) {
+  if (Array.isArray(source.days)) return source.days;
+
+  const exercises = Array.isArray(source.exercises) ? source.exercises : [];
+  if (!exercises.length) return [];
+
+  return [{
+    id: 'day-1',
+    title: source.name || 'Imported program',
+    weekNumber: 1,
+    blocks: [{
+      id: 'main',
+      title: 'Main',
+      executionStyle: 'sequential',
+      exercises,
+    }],
+  }];
+}
+
+function getProgramExercises(source) {
+  if (Array.isArray(source.exercises)) return source.exercises;
+  return getProgramDays(source).flatMap((day) =>
+    (day.blocks || []).flatMap((block) => block.exercises || []),
+  );
+}
+
+function getProgramSetCount(source) {
+  if (typeof source.totalSets === 'number') return source.totalSets;
+  return getProgramExercises(source).reduce((sum, exercise) => sum + normalizeSetCount(exercise.sets), 0);
+}
+
+function normalizeSetCount(value) {
+  return typeof value === 'number' ? value : 0;
+}
+
 // ─────────────────────────────────────────────────────────────
 // 5. Failed scan — when the parser couldn't read the source.
 // ─────────────────────────────────────────────────────────────
-const FailedScanScreen = ({ onRetry, onClose }) => (
+const FailedScanScreen = ({ error, onRetry, onClose }) => (
   <Screen padTop={56} padBottom={40} style={{ display: 'flex', flexDirection: 'column' }}>
     <div style={{ padding: '0 20px 20px' }}>
       <button onClick={onClose} className="press" style={{
@@ -464,8 +782,7 @@ const FailedScanScreen = ({ onRetry, onClose }) => (
         fontSize: 14, color: 'var(--text-2)',
         margin: 0, lineHeight: 1.5, maxWidth: 280,
       }}>
-        The image was too blurry or the format didn't match what we recognize.
-        Try again with a clearer shot, or enter it manually.
+        {error || "The image was too blurry or the format didn't match what we recognize. Try again with a clearer shot, or enter it manually."}
       </p>
     </div>
 
@@ -476,4 +793,14 @@ const FailedScanScreen = ({ onRetry, onClose }) => (
   </Screen>
 );
 
-Object.assign(window, { AddProgramScreen, CameraScreen, ParsingScreen, ReviewScreen, FailedScanScreen });
+Object.assign(window, {
+  AddProgramScreen,
+  CameraScreen,
+  ParsingScreen,
+  ReviewScreen,
+  FailedScanScreen,
+  ProgramScheduleView,
+  getProgramDays,
+  getProgramExercises,
+  getProgramSetCount,
+});

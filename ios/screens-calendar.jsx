@@ -3,11 +3,12 @@
 
 const CalendarScreen = ({ onOpenWorkout }) => {
   const days = window.ACTIVITY || [];
-  // Render April 2026 (30 days). The heatmap data is the trailing 30 of the 84-day buffer.
-  const monthDays = Array.from({ length: 30 }, (_, i) => days[40 + i] || 0);
+  // Render April 2026. Supabase-backed data provides this directly; the
+  // old 84-day buffer remains as a fallback for static demo mode.
+  const monthDays = window.ACTIVITY_MONTH_DAYS || Array.from({ length: 30 }, (_, i) => days[40 + i] || 0);
   const firstDayOffset = 2; // April 1 2026 was a Wed → Mon-first grid offset of 2.
 
-  const stats = {
+  const stats = window.ACTIVITY_STATS || {
     sessions: monthDays.filter((d) => d > 0).length,
     streak: 4,
     volume: '184k',
@@ -97,10 +98,11 @@ const CalendarScreen = ({ onOpenWorkout }) => {
           const day = i + 1;
           const isToday = day === 27;
           const cell = intensities[v];
+          const sessionId = window.TRAINAR_MONTH_SESSION_IDS?.[day]?.id;
           return (
             <button
               key={i}
-              onClick={() => v > 0 && onOpenWorkout && onOpenWorkout()}
+              onClick={() => v > 0 && onOpenWorkout && onOpenWorkout(sessionId)}
               className={v > 0 ? 'press' : ''}
               style={{
                 aspectRatio: '1',
@@ -141,7 +143,7 @@ const CalendarScreen = ({ onOpenWorkout }) => {
           {recent.map((h, i) => (
             <div
               key={i}
-              onClick={() => onOpenWorkout && onOpenWorkout()}
+              onClick={() => onOpenWorkout && onOpenWorkout(h.id)}
               className="press"
               style={{
                 display: 'flex', alignItems: 'center', gap: 14,

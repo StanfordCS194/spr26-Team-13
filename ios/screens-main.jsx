@@ -20,12 +20,18 @@ const HomeScreen = ({
   onFinish,
   glassesConnected = true,
   loadedToGlasses = false,
+  activeProgramId = null,
 }) => {
   const programs  = window.PROGRAMS || [];
-  const detail    = window.PROGRAM_DETAIL || { exercises: [] };
+  const loadedProgram = activeProgramId
+    ? programs.find((program) => program.id === activeProgramId)
+    : programs[0];
+  const detail = activeProgramId && window.getProgramDetail
+    ? (window.getProgramDetail(activeProgramId) || window.PROGRAM_DETAIL || { exercises: [] })
+    : (window.PROGRAM_DETAIL || { exercises: [] });
   const exercises = detail.exercises || [];
-  const loaded    = loadedToGlasses ? programs[0] : null;
-  const rest      = loadedToGlasses ? programs.slice(1) : programs;
+  const loaded    = loadedToGlasses ? loadedProgram : null;
+  const rest      = loadedToGlasses ? programs.filter((program) => program.id !== loaded?.id) : programs;
 
   return (
     <Screen padTop={56} padBottom={120}>
