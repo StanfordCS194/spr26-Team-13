@@ -20,6 +20,7 @@ const ProfileScreen = ({ user }) => {
   const name = u.name || 'Alex';
   const email = u.email || 'alex@stanford.edu';
   const initial = (name[0] || 'A').toUpperCase();
+  const device = (window.TRAINAR_DEVICES || [])[0];
 
   const settingsRows = [
     { i: 'user',      l: 'Account & profile' },
@@ -75,12 +76,14 @@ const ProfileScreen = ({ user }) => {
               <Icon name="glasses" size={22} stroke="var(--accent)" />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>TrainAR · M2</div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>
+                {device ? `${device.name || 'TrainAR'} · ${device.model || 'M2'}` : 'TrainAR · M2'}
+              </div>
               <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-                SN · 8E40·B7C2
+                SN · {(device?.serial_number || '8E40-B7C2').replace('-', '·')}
               </div>
             </div>
-            <Pill accent>● Connected</Pill>
+            <Pill accent>● {device?.connection_status === 'connected' ? 'Connected' : 'Ready'}</Pill>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -92,12 +95,12 @@ const ProfileScreen = ({ user }) => {
                 fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase',
                 letterSpacing: 0.4, marginBottom: 4,
               }}>Battery</div>
-              <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>78%</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>{device?.battery_percent || 78}%</div>
               <div style={{
                 marginTop: 6, height: 3, borderRadius: 2,
                 background: 'var(--overlay-2)', overflow: 'hidden',
               }}>
-                <div style={{ width: '78%', height: '100%', background: 'var(--accent)' }} />
+                <div style={{ width: `${device?.battery_percent || 78}%`, height: '100%', background: 'var(--accent)' }} />
               </div>
             </div>
             <div style={{
@@ -108,7 +111,7 @@ const ProfileScreen = ({ user }) => {
                 fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase',
                 letterSpacing: 0.4, marginBottom: 4,
               }}>Firmware</div>
-              <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>1.4.2</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>{device?.firmware_version || '1.4.2'}</div>
               <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 6 }}>Up to date</div>
             </div>
           </div>

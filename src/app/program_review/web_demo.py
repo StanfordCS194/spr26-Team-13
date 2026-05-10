@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import tempfile
 import time
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
@@ -21,6 +22,8 @@ from src.ingestion.llm_normalizer import (
 DESKTOP_LLM_ATTEMPTS = 4
 DESKTOP_PARSE_CACHE_DIR = Path(".cache/program_review")
 DESKTOP_CACHE_HIT_DELAY_SECONDS = 7.0
+IOS_APP_DIR = Path(__file__).resolve().parents[3] / "ios"
+LOGGER = logging.getLogger(__name__)
 
 
 def create_app() -> Flask:
@@ -31,9 +34,25 @@ def create_app() -> Flask:
         template_folder=str(Path(__file__).with_name("templates")),
     )
 
+    @app.after_request
+    def add_api_cors_headers(response):
+        if request.path.startswith("/api/"):
+            response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return response
+
     @app.get("/")
     def index():
         return _render_demo()
+
+    @app.get("/ios/")
+    def ios_index():
+        return send_from_directory(IOS_APP_DIR, "index.html")
+
+    @app.get("/ios/<path:path>")
+    def ios_asset(path: str):
+        return send_from_directory(IOS_APP_DIR, path)
 
     @app.post("/process")
     def process_program():
@@ -52,8 +71,11 @@ def create_app() -> Flask:
         except (UnsupportedProgramSourceError, ValueError) as exc:
             return _render_demo(error=str(exc))
 
-    @app.post("/api/programs/parse")
+    @app.route("/api/programs/parse", methods=["POST", "OPTIONS"])
     def parse_program_api():
+        if request.method == "OPTIONS":
+            return ("", 204)
+
         upload = request.files.get("program_file")
         user_id = request.form.get("user_id", "demo-user").strip() or "demo-user"
 
@@ -61,7 +83,7 @@ def create_app() -> Flask:
             if not upload or not upload.filename:
                 raise ValueError("Upload an image or document to process.")
 
-            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=True, use_cache=True)
+            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=False, use_cache=True)
             return jsonify(
                 {
                     "program": program.model_dump(mode="json"),
@@ -70,6 +92,12 @@ def create_app() -> Flask:
             )
         except (UnsupportedProgramSourceError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
+        except BrokenPipeError:
+            LOGGER.warning("Client disconnected while parsing uploaded program.", exc_info=True)
+            return jsonify({"error": "The upload connection was interrupted. Try again."}), 499
+        except Exception:
+            LOGGER.exception("Unexpected error while parsing uploaded program.")
+            return jsonify({"error": "Program parsing failed. Try a clearer file or a text export."}), 500
 
     return app
 
@@ -183,7 +211,7 @@ def _build_cache_key(path: Path, *, user_id: str, title: str) -> str:
             "file_sha256": digest.hexdigest(),
             "user_id": user_id,
             "title": title,
-            "version": 1,
+            "version": 2,
         },
         sort_keys=True,
     )

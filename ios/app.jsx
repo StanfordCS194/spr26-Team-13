@@ -42,6 +42,15 @@ function App() {
 
   // Workout-active flag. True from "Start workout" → "Finish workout".
   const [loadedToGlasses, setLoadedToGlasses] = React.useState(false);
+  const [activeProgramId, setActiveProgramId] = React.useState(null);
+  const [activeSessionId, setActiveSessionId] = React.useState(null);
+  const [selectedProgramId, setSelectedProgramId] = React.useState(null);
+  const [selectedProgramFile, setSelectedProgramFile] = React.useState(null);
+  const [parsedProgram, setParsedProgram] = React.useState(window.PARSED_PROGRAM || null);
+  const [parseError, setParseError] = React.useState(null);
+  const [saveError, setSaveError] = React.useState(null);
+  const [savingProgram, setSavingProgram] = React.useState(false);
+  const [dataVersion, setDataVersion] = React.useState(0);
 
   // Nav stack for the main phase. Pushing a sub-screen records what we
   // were on so the back button knows where to land.
@@ -50,6 +59,39 @@ function App() {
   const go = (next) => {
     setStack((prev) => [...prev, screen]);
     setScreen(next);
+  };
+
+  React.useEffect(() => {
+    const onData = () => setDataVersion((version) => version + 1);
+    window.addEventListener('trainar:data', onData);
+    return () => window.removeEventListener('trainar:data', onData);
+  }, []);
+
+  React.useEffect(() => {
+    if (auth.pending) return;
+    if (!auth.user) {
+      if (window.resetTrainarData) window.resetTrainarData();
+      return;
+    }
+
+    if (window.loadTrainarData) {
+      window.loadTrainarData(auth.user.id).catch((err) => {
+        console.error('Could not load TrainAR data:', err);
+      });
+    }
+
+    if (auth.user.name && SIGNUP_SCREENS.includes(screen)) {
+      switchTab('home');
+    }
+  }, [auth.pending, auth.user && auth.user.id, auth.user && auth.user.name]);
+
+  const startParsingFile = (file) => {
+    if (!file) return;
+    setSelectedProgramFile(file);
+    setParseError(null);
+    setSaveError(null);
+    setStack((prev) => [...prev, screen]);
+    setScreen('parsing');
   };
 
   const back = () => {
@@ -71,9 +113,57 @@ function App() {
   const restart = () => {
     auth.signOut();
     setLoadedToGlasses(false);
+    setActiveProgramId(null);
+    setActiveSessionId(null);
+    setSelectedProgramId(null);
     setScreen('splash');
     setStack([]);
     setMode('signup');
+  };
+
+  const openProgram = (programId) => {
+    const detail = window.getProgramDetail && programId ? window.getProgramDetail(programId) : null;
+    setSelectedProgramId(programId || detail?.programId || null);
+    setParsedProgram(detail || parsedProgram || window.PROGRAM_DETAIL);
+    go('detail');
+  };
+
+  const startWorkout = async (programId) => {
+    const nextProgramId = programId || selectedProgramId || (window.PROGRAMS || [])[0]?.id || null;
+    setActiveProgramId(nextProgramId);
+    setLoadedToGlasses(true);
+    if (window.startWorkout) {
+      try {
+        const sessionId = await window.startWorkout(nextProgramId);
+        setActiveSessionId(sessionId);
+      } catch (err) {
+        console.error('Could not start workout:', err);
+      }
+    }
+  };
+
+  const finishWorkout = async () => {
+    setLoadedToGlasses(false);
+    if (window.finishWorkout && activeSessionId) {
+      try {
+        await window.finishWorkout(activeSessionId, activeProgramId);
+      } catch (err) {
+        console.error('Could not finish workout:', err);
+      }
+    }
+    setActiveSessionId(null);
+    go('past');
+  };
+
+  const openWorkout = async (sessionId) => {
+    if (window.selectPastWorkout) {
+      try {
+        await window.selectPastWorkout(sessionId);
+      } catch (err) {
+        console.error('Could not load workout detail:', err);
+      }
+    }
+    go('past');
   };
 
   const screens = {
@@ -110,44 +200,81 @@ function App() {
     // ── Tab roots ───────────────────────────────────────────────
     home: (
       <HomeScreen
+        key={`home-${dataVersion}-${activeProgramId || 'none'}`}
         glassesConnected={true}
         loadedToGlasses={loadedToGlasses}
+        activeProgramId={activeProgramId}
         onAddProgram={() => go('add')}
-        onOpenProgram={() => go('detail')}
+        onOpenProgram={openProgram}
         // Quick-start from the round green glasses button stays on home —
         // the screen re-renders into the active hero card.
-        onActivate={() => setLoadedToGlasses(true)}
-        onFinish={() => { setLoadedToGlasses(false); go('past'); }}
+        onActivate={startWorkout}
+        onFinish={finishWorkout}
       />
     ),
-    calendar: <CalendarScreen onOpenWorkout={() => go('past')} />,
-    profile:  <ProfileScreen user={auth.user} />,
+    calendar: <CalendarScreen key={`calendar-${dataVersion}`} onOpenWorkout={openWorkout} />,
+    profile:  <ProfileScreen key={`profile-${dataVersion}`} user={auth.user} />,
 
     // ── Add-program flow (sub-screens of home) ──────────────────
     add: (
       <AddProgramScreen
         onCamera={() => setScreen('camera')}
-        onUpload={() => setScreen('parsing')}
+        onFileSelected={startParsingFile}
         onClose={back}
       />
     ),
     camera: (
       <CameraScreen
-        onCapture={() => setScreen('parsing')}
+        onFileSelected={startParsingFile}
         onClose={() => setScreen('add')}
       />
     ),
-    parsing: <ParsingScreen onDone={() => setScreen('review')} />,
+    parsing: (
+      <ParsingScreen
+        file={selectedProgramFile}
+        error={parseError}
+        onCancel={back}
+        onDone={(detail) => {
+          setParsedProgram(detail);
+          setParseError(null);
+          setScreen('review');
+        }}
+        onFailed={(message) => {
+          setParseError(message);
+          setScreen('failed');
+        }}
+      />
+    ),
     review: (
       <ReviewScreen
+        program={parsedProgram}
+        saving={savingProgram}
+        error={saveError}
         // After save, take them to the detail view of what they just imported.
-        onConfirm={() => { setStack([]); setScreen('detail'); }}
+        onConfirm={async ({ name } = {}) => {
+          const detail = { ...(parsedProgram || window.PARSED_PROGRAM), name: name || parsedProgram?.name };
+          setSavingProgram(true);
+          setSaveError(null);
+          try {
+            const programId = await installParsedProgram(detail);
+            const savedDetail = (window.getProgramDetail && programId && window.getProgramDetail(programId)) || detail;
+            setSelectedProgramId(programId || savedDetail.programId || null);
+            setParsedProgram(savedDetail);
+            setStack([]);
+            setScreen('detail');
+          } catch (err) {
+            setSaveError(err.message || 'Could not save this program.');
+          } finally {
+            setSavingProgram(false);
+          }
+        }}
         onClose={() =>   { setStack([]); setScreen('home'); setActiveTab('home'); }}
       />
     ),
     failed: (
       <FailedScanScreen
-        onRetry={() => setScreen('camera')}
+        error={parseError}
+        onRetry={() => setScreen(selectedProgramFile ? 'parsing' : 'add')}
         onClose={() => { setStack([]); setScreen('home'); setActiveTab('home'); }}
       />
     ),
@@ -155,14 +282,23 @@ function App() {
     // ── Program detail + past workout ───────────────────────────
     detail: (
       <ProgramViewScreen
+        key={`detail-${selectedProgramId || parsedProgram?.programId || 'parsed'}-${dataVersion}`}
+        program={parsedProgram}
         loadedToGlasses={loadedToGlasses}
         onClose={back}
-        onStartWorkout={() => setLoadedToGlasses(true)}
-        onFinishWorkout={() => { setLoadedToGlasses(false); go('past'); }}
-        onDiscard={() => { setStack([]); setScreen('home'); setActiveTab('home'); }}
+        onStartWorkout={() => startWorkout(selectedProgramId || parsedProgram?.programId)}
+        onFinishWorkout={finishWorkout}
+        onDiscard={() => {
+          if (window.archiveProgram && selectedProgramId) {
+            window.archiveProgram(selectedProgramId).catch((err) => console.error('Could not archive program:', err));
+          }
+          setStack([]);
+          setScreen('home');
+          setActiveTab('home');
+        }}
       />
     ),
-    past: <PastWorkoutScreen onBack={back} />,
+    past: <PastWorkoutScreen key={`past-${dataVersion}`} onBack={back} />,
   };
 
   const showTabBar = SCREENS_WITH_TABBAR.includes(screen);

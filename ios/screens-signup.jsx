@@ -315,6 +315,9 @@ const PairScreen = ({ onContinue, onSkip, onBack }) => {
 
   const pair = () => {
     setPhase('connected');
+    if (window.pairDemoDevice) {
+      window.pairDemoDevice().catch((err) => console.error('Could not save paired device:', err));
+    }
     setTimeout(onContinue, 1100);
   };
 
