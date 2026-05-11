@@ -12,6 +12,7 @@
 		3A1000030000000000000001 /* TrainARWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000130000000000000001 /* TrainARWebView.swift */; };
 		3A1000040000000000000001 /* GlassesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000140000000000000001 /* GlassesBridge.swift */; };
 		3A1000050000000000000001 /* MetaWearablesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000150000000000000001 /* MetaWearablesBridge.swift */; };
+		3A1000060000000000000001 /* AppleVoiceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000170000000000000001 /* AppleVoiceBridge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +23,7 @@
 		3A1000140000000000000001 /* GlassesBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassesBridge.swift; sourceTree = "<group>"; };
 		3A1000150000000000000001 /* MetaWearablesBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetaWearablesBridge.swift; sourceTree = "<group>"; };
 		3A1000160000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3A1000170000000000000001 /* AppleVoiceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleVoiceBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +53,7 @@
 				3A1000130000000000000001 /* TrainARWebView.swift */,
 				3A1000140000000000000001 /* GlassesBridge.swift */,
 				3A1000150000000000000001 /* MetaWearablesBridge.swift */,
+				3A1000170000000000000001 /* AppleVoiceBridge.swift */,
 				3A1000160000000000000001 /* Info.plist */,
 			);
 			path = TrainAR;
@@ -137,6 +140,7 @@
 				3A1000030000000000000001 /* TrainARWebView.swift in Sources */,
 				3A1000040000000000000001 /* GlassesBridge.swift in Sources */,
 				3A1000050000000000000001 /* MetaWearablesBridge.swift in Sources */,
+				3A1000060000000000000001 /* AppleVoiceBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
