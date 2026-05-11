@@ -1,0 +1,6 @@
+COMPLETE
+
+Voice coach iPhone-mode end-to-end wiring landed.
+
+Plan: /Users/charlieabowd/.claude/plans/ok-i-want-you-peppy-gosling.md
+Verification: docs/voice-coach-demo.md

@@ -42,6 +42,10 @@
 	<string>TrainAR uses Bluetooth to connect to Meta wearable devices.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>TrainAR uses camera input from wearable devices to understand workout context.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>TrainAR listens for short voice commands so you can log sets hands-free during a workout.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>TrainAR transcribes your voice commands on-device so the coach can act on them.</string>
 	<key>TRAINAR_WEB_URL</key>
 	<string>http://127.0.0.1:5002/ios/</string>
 	<key>UIApplicationSceneManifest</key>

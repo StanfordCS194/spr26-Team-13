@@ -216,4 +216,57 @@ const HomeScreen = ({
   );
 };
 
-Object.assign(window, { HomeScreen });
+// Floating mic button. When the native shell is attached we ask it to start
+// SFSpeechRecognizer via the `startListening` command; otherwise we fall back
+// to a textarea prompt so the loop is demoable in a plain browser too.
+const CoachMicFab = () => {
+  const [busy, setBusy] = React.useState(false);
+  const isNative = typeof window !== 'undefined' && window.TRAINAR_NATIVE_APP === true;
+
+  const sendTranscript = async (transcript) => {
+    if (!transcript || !window.askTrainARCoach) return;
+    setBusy(true);
+    try {
+      await window.askTrainARCoach(transcript);
+    } catch (err) {
+      console.error('Coach call failed:', err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onClick = () => {
+    if (busy) return;
+    if (isNative && window.sendTrainARNativeCommand) {
+      window.sendTrainARNativeCommand('startListening', {});
+      return;
+    }
+    const transcript = window.prompt('What should the coach do?', 'log a set: 5 reps at 135 on bench');
+    if (transcript) sendTranscript(transcript);
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      aria-label={isNative ? 'Talk to coach' : 'Type a coach command'}
+      style={{
+        position: 'fixed', right: 18, bottom: 92, zIndex: 50,
+        width: 56, height: 56, borderRadius: '50%',
+        background: busy ? 'var(--surface-2)' : 'var(--accent)',
+        color: 'var(--on-accent)', border: 'none',
+        boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: busy ? 'wait' : 'pointer',
+      }}
+    >
+      <Icon
+        name={isNative ? 'glasses' : 'plus'}
+        size={24}
+        stroke={busy ? 'var(--text-2)' : 'var(--on-accent)'}
+        strokeWidth={2.4}
+      />
+    </button>
+  );
+};
+
+Object.assign(window, { HomeScreen, CoachMicFab });

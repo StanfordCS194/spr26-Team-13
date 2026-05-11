@@ -88,17 +88,17 @@ def _execute_action(action: AssistantAction, *, context: dict[str, Any] | None =
         contextual_pr = _get_contextual_pr(action.exercise_name, context=context)
         if contextual_pr is not None:
             return contextual_pr
-        return tools.get_pr(action.exercise_name)
+        return tools.get_pr(action.exercise_name, context=context)
     if action.action == "log_set":
-        return tools.log_set(action.exercise_name, action.reps, action.weight)
+        return tools.log_set(action.exercise_name, action.reps, action.weight, context=context)
     if action.action == "start_workout":
-        return tools.start_workout()
+        return tools.start_workout(context=context)
     if action.action == "start_exercise":
-        return tools.start_exercise(action.exercise_name)
+        return tools.start_exercise(action.exercise_name, context=context)
     if action.action == "start_rest":
-        return tools.start_rest(action.duration_seconds)
+        return tools.start_rest(action.duration_seconds, context=context)
     if action.action == "finish_workout":
-        return tools.finish_workout()
+        return tools.finish_workout(context=context)
     if context:
         return _answer_from_context(context)
     return {

@@ -8,10 +8,17 @@ import logging
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from src.assistant.service import AssistantUnavailableError, handle_message
+from src.assistant.supabase_client import (
+    SupabaseAuthError,
+    SupabaseConfigError,
+    build_user_client,
+    extract_user_id,
+)
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
 from src.ingestion.llm_normalizer import (
@@ -40,7 +47,7 @@ def create_app() -> Flask:
         if request.path.startswith("/api/"):
             response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
             response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return response
 
     @app.get("/")
@@ -100,16 +107,34 @@ def create_app() -> Flask:
             LOGGER.exception("Unexpected error while parsing uploaded program.")
             return jsonify({"error": "Program parsing failed. Try a clearer file or a text export."}), 500
 
-    @app.post("/api/assistant/chat")
+    @app.route("/api/assistant/chat", methods=["POST", "OPTIONS"])
     def assistant_chat_api():
+        if request.method == "OPTIONS":
+            return ("", 204)
+
         payload = request.get_json(silent=True) or {}
         message = str(payload.get("message", "")).strip()
-        context = payload.get("context") if isinstance(payload.get("context"), dict) else None
+        client_context = payload.get("context") if isinstance(payload.get("context"), dict) else None
         if not message:
             return jsonify({"error": "Message is required."}), 400
 
+        jwt = _extract_bearer_jwt(request.headers.get("Authorization", ""))
+        context: dict[str, Any] = dict(client_context or {})
+
+        if jwt:
+            try:
+                supabase = build_user_client(jwt)
+                user_id = extract_user_id(jwt)
+                context["supabase"] = supabase
+                context["user_id"] = user_id
+            except SupabaseConfigError as exc:
+                LOGGER.warning("Supabase not configured: %s", exc)
+                return jsonify({"error": str(exc)}), 503
+            except SupabaseAuthError as exc:
+                return jsonify({"error": str(exc)}), 401
+
         try:
-            return jsonify(handle_message(message, context=context))
+            return jsonify(handle_message(message, context=context or None))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         except AssistantUnavailableError as exc:
@@ -280,6 +305,16 @@ def _write_desktop_parse_cache(
 
 def _desktop_parse_cache_path(cache_key: str) -> Path:
     return DESKTOP_PARSE_CACHE_DIR / f"{cache_key}.json"
+
+
+def _extract_bearer_jwt(header_value: str) -> str | None:
+    if not header_value:
+        return None
+    parts = header_value.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    token = parts[1].strip()
+    return token or None
 
 
 def _is_retryable_llm_error(exc: Exception) -> bool:
