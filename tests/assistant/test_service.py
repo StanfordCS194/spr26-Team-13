@@ -56,3 +56,14 @@ def test_handle_message_uses_context_for_general_coach_answer(monkeypatch):
     assert "Back Squat" in payload["response"]
     assert "Powerbuilding" in payload["response"]
     assert payload["action"]["action"] == "unknown"
+
+
+def test_handle_message_fallback_pr_with_unrelated_context_keeps_exercise_name(monkeypatch):
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    payload = handle_message(
+        "What's my squat PR?",
+        context={"activeProgram": {"name": "Powerbuilding"}},
+    )
+
+    assert payload["response"] == "Your back squat PR is 315 pounds for 2 reps."
