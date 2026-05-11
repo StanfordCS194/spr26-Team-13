@@ -120,7 +120,7 @@ def _format_response(
     if result.get("status") == "context_answer":
         return str(result["message"])
     if action.action == "get_pr":
-        display_name = result.get("display_name") if context else result["exercise_name"]
+        display_name = (result.get("display_name") if result.get("unit") else None) or result["exercise_name"]
         return (
             f"Your {display_name} PR is "
             f"{_format_weight(result['weight'])} {result.get('unit') or 'pounds'}"

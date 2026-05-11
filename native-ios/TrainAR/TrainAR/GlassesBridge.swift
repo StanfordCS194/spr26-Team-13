@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct GlassesBridgeEvent: Codable {
     let type: String

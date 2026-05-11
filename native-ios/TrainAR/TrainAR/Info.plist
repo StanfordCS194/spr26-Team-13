@@ -43,7 +43,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>TrainAR uses camera input from wearable devices to understand workout context.</string>
 	<key>TRAINAR_WEB_URL</key>
-	<string>http://10.27.13.10:5002/ios/</string>
+	<string>http://127.0.0.1:5002/ios/</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -57,4 +57,3 @@
 	</array>
 </dict>
 </plist>
-
