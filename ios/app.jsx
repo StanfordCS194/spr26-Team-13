@@ -200,15 +200,25 @@ function App() {
       setCoachResponse(event.detail || null);
     };
 
+    const onHistoryChanged = () => {
+      if (auth.user && window.loadTrainarData) {
+        window.loadTrainarData(auth.user.id).catch((err) => {
+          console.error('Could not reload TrainAR data after coach action:', err);
+        });
+      }
+    };
+
     window.addEventListener('trainar:glasses-state', onGlassesState);
     window.addEventListener('trainar:glasses', onGlassesEvent);
     window.addEventListener('trainar:coach-response', onCoachResponse);
+    window.addEventListener('trainar:history-changed', onHistoryChanged);
     return () => {
       window.removeEventListener('trainar:glasses-state', onGlassesState);
       window.removeEventListener('trainar:glasses', onGlassesEvent);
       window.removeEventListener('trainar:coach-response', onCoachResponse);
+      window.removeEventListener('trainar:history-changed', onHistoryChanged);
     };
-  }, [activeProgramId, selectedProgramId, activeSessionId, loadedToGlasses]);
+  }, [activeProgramId, selectedProgramId, activeSessionId, loadedToGlasses, auth.user]);
 
   const openWorkout = async (sessionId) => {
     if (window.selectPastWorkout) {
@@ -380,6 +390,7 @@ function App() {
       {showTabBar && (
         <TabBar active={activeTab} live={loadedToGlasses} onTab={switchTab} />
       )}
+      {showTabBar && auth.user && window.CoachMicFab && <CoachMicFab />}
       {coachResponse?.response && (
         <CoachOverlay
           response={coachResponse.response}

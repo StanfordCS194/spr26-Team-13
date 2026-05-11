@@ -5,15 +5,35 @@
 // the local assistant endpoint so coach responses can refer to saved programs,
 // workout history, PRs, and device state.
 (function () {
+  async function getSupabaseAccessToken() {
+    const client = window.trainarSupabase;
+    if (!client || !client.auth || typeof client.auth.getSession !== 'function') {
+      return null;
+    }
+    try {
+      const { data, error } = await client.auth.getSession();
+      if (error) return null;
+      return data && data.session ? data.session.access_token : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
   async function askTrainARCoach(message, options = {}) {
     const cleanMessage = String(message || '').trim();
     if (!cleanMessage) {
       throw new Error('Message is required.');
     }
 
+    const headers = { 'Content-Type': 'application/json' };
+    const accessToken = await getSupabaseAccessToken();
+    if (accessToken) {
+      headers['Authorization'] = 'Bearer ' + accessToken;
+    }
+
     const response = await fetch('/api/assistant/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         message: cleanMessage,
         context: buildCoachContext(options),
@@ -29,10 +49,26 @@
       detail: payload,
     }));
 
+    // Ask the native shell to speak the reply via AVSpeechSynthesizer.
+    window.dispatchEvent(new CustomEvent('trainar:speak', {
+      detail: { text: payload.response || '' },
+    }));
+
     if (window.sendTrainARNativeCommand) {
       window.sendTrainARNativeCommand('coachResponse', {
         response: payload.response || '',
       });
+      if (payload.response) {
+        window.sendTrainARNativeCommand('speakResponse', {
+          text: payload.response,
+        });
+      }
+    }
+
+    // Trigger a History refresh so newly-written sets show up.
+    const action = (payload.action && payload.action.action) || '';
+    if (['log_set', 'finish_workout', 'start_workout', 'start_exercise'].includes(action)) {
+      window.dispatchEvent(new CustomEvent('trainar:history-changed'));
     }
 
     return payload;
