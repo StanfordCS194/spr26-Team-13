@@ -37,7 +37,8 @@ active_exercise_name from the supplied context as exercise_name.
 Use get_recent_exercise_history for questions like "what did I do last time" or
 "what weight did I use last week".
 Use add_exercise for requests that add planned work, including phrasing like
-"10 by barbell back squat at 225lb" or "3 sets of 10 back squat at 225".
+"10 by barbell back squat at 225lb", "3 sets of 10 back squat at 225", or
+"start a set of 10 pushups".
 Use log_set for completed work, such as "log 8 reps at 225".
 If the request is not supported or is ambiguous, return unknown.
 """

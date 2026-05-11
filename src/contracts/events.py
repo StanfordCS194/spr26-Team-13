@@ -24,6 +24,7 @@ class DisplayState(ContractModel):
     rep_progress: Optional[str] = None
     target_summary: str
     rest_remaining_seconds: Optional[int] = Field(default=None, ge=0)
+    rest_total_seconds: Optional[int] = Field(default=None, ge=0)
     next_action: Optional[str] = None
     warning_message: Optional[str] = None
 

@@ -6,13 +6,15 @@ renders the result over a webcam frame or demo video for quick visual testing.
 
 import argparse
 import json
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from math import ceil
 from pathlib import Path
 from time import perf_counter
-from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 import cv2
 
@@ -25,6 +27,7 @@ from src.contracts import (
 )
 from src.glasses.display.adapter import build_tracking_indicator, display_state_to_overlay
 from src.glasses.display.renderer import OverlayRenderer
+from src.assistant.voice import VoiceInputUnavailableError, record_and_transcribe
 
 DEFAULT_CAMERA_WIDTH = 1280
 DEFAULT_CAMERA_HEIGHT = 720
@@ -128,6 +131,30 @@ def _parse_args():
         type=float,
         default=0.5,
         help="Minimum interval between live DisplayState API polls.",
+    )
+    parser.add_argument(
+        "--assistant-chat-url",
+        help="Optional assistant chat API URL. Press the voice key to send spoken commands here.",
+    )
+    parser.add_argument(
+        "--user-id",
+        default="demo-user",
+        help="User id to send with assistant voice commands.",
+    )
+    parser.add_argument(
+        "--session-id",
+        help="Optional active session id to send with assistant voice commands.",
+    )
+    parser.add_argument(
+        "--voice-key",
+        default="p",
+        help="Keyboard key that starts a fixed-duration push-to-talk recording.",
+    )
+    parser.add_argument(
+        "--voice-seconds",
+        type=float,
+        default=4.0,
+        help="Seconds to record after pressing the voice key.",
     )
     return parser.parse_args()
 
@@ -263,6 +290,35 @@ def draw_overlay(frame, state: DisplayState):
     return OverlayRenderer().render(frame, overlay_state)
 
 
+def _build_empty_live_display_state(status_message: str | None = None) -> DisplayState:
+    return DisplayState(
+        exercise_name="Live Workout",
+        set_progress="No workout started",
+        rep_progress=None,
+        target_summary="Say a command to build this workout",
+        rest_remaining_seconds=None,
+        rest_total_seconds=None,
+        next_action=status_message or "Press P and speak",
+        warning_message=None,
+    )
+
+
+def _display_state_url_from_chat_url(chat_url: str, session_id: str) -> str:
+    parsed = urlparse(chat_url)
+    query = dict(parse_qsl(parsed.query))
+    query["session_id"] = session_id
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            "/api/display-state",
+            "",
+            urlencode(query),
+            "",
+        )
+    )
+
+
 class LiveDisplayStatePoller:
     """Polls an API endpoint for DisplayState without owning workout logic."""
 
@@ -289,6 +345,118 @@ class LiveDisplayStatePoller:
         return self.last_state
 
 
+class AssistantVoiceClient:
+    """Records push-to-talk commands and sends transcripts to the assistant API."""
+
+    def __init__(
+        self,
+        *,
+        chat_url: str,
+        user_id: str,
+        session_id: str | None,
+        record_seconds: float,
+    ) -> None:
+        self.chat_url = chat_url
+        self.user_id = user_id
+        self.session_id = session_id
+        self.record_seconds = record_seconds
+        self._lock = threading.Lock()
+        self._busy = False
+        self._latest_display_state: DisplayState | None = None
+        self._status_message = "Press voice key to talk"
+
+    @property
+    def status_message(self) -> str:
+        with self._lock:
+            return self._status_message
+
+    @property
+    def active_session_id(self) -> str | None:
+        with self._lock:
+            return self.session_id
+
+    def consume_display_state(self) -> DisplayState | None:
+        with self._lock:
+            state = self._latest_display_state
+            self._latest_display_state = None
+            return state
+
+    def trigger(self) -> bool:
+        with self._lock:
+            if self._busy:
+                return False
+            self._busy = True
+            self._status_message = f"Recording for {self.record_seconds:g}s..."
+
+        thread = threading.Thread(target=self._record_and_send, daemon=True)
+        thread.start()
+        return True
+
+    def _record_and_send(self) -> None:
+        try:
+            print(f"[voice] Recording for {self.record_seconds:g}s...")
+            transcript = record_and_transcribe(duration_seconds=self.record_seconds)
+            if not transcript:
+                self._set_status("No speech detected")
+                print("[voice] No speech detected.")
+                return
+
+            self._set_status(f"Heard: {transcript}")
+            print(f"[voice] Heard: {transcript}")
+            response = self._post_message(transcript)
+            display_state = response.get("display_state")
+            if display_state:
+                with self._lock:
+                    self._latest_display_state = DisplayState.model_validate(display_state)
+
+            tool_result = response.get("tool_result")
+            if isinstance(tool_result, dict) and tool_result.get("session_id"):
+                with self._lock:
+                    self.session_id = str(tool_result["session_id"])
+
+            print(f"[assistant] {response.get('response', '')}")
+            self._set_status(str(response.get("response") or "Assistant command sent"))
+        except (VoiceInputUnavailableError, ValueError) as exc:
+            self._set_status(str(exc))
+            print(f"[voice] {exc}")
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            message = f"Assistant API returned HTTP {exc.code}"
+            if body:
+                message = f"{message}: {body[:240]}"
+            self._set_status(message)
+            print(f"[voice] {message}")
+        except Exception as exc:
+            self._set_status("Voice command failed")
+            print(f"[voice] Command failed: {exc}")
+        finally:
+            with self._lock:
+                self._busy = False
+
+    def _post_message(self, transcript: str) -> dict:
+        payload = {
+            "user_id": self.user_id,
+            "message": transcript,
+        }
+        with self._lock:
+            if self.session_id:
+                payload["session_id"] = self.session_id
+
+        body = json.dumps(payload).encode("utf-8")
+        request = Request(
+            self.chat_url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _set_status(self, message: str) -> None:
+        with self._lock:
+            self._status_message = message
+
+
 def main():
     args = _parse_args()
     if args.playback_speed <= 0:
@@ -303,6 +471,21 @@ def main():
         if args.display_state_url
         else None
     )
+    auto_live_state_poller: LiveDisplayStatePoller | None = None
+    auto_live_state_session_id: str | None = None
+    voice_client = (
+        AssistantVoiceClient(
+            chat_url=args.assistant_chat_url,
+            user_id=args.user_id,
+            session_id=args.session_id,
+            record_seconds=args.voice_seconds,
+        )
+        if args.assistant_chat_url
+        else None
+    )
+    voice_key = ord(args.voice_key[:1]) if args.voice_key else None
+    voice_display_state: DisplayState | None = None
+    live_mode_enabled = bool(live_state_poller or voice_client)
     using_video = args.video is not None
     video_path = args.video.expanduser() if args.video else None
     output_path = args.output.expanduser() if args.output else None
@@ -350,8 +533,28 @@ def main():
             if using_video:
                 elapsed_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
 
-            live_display_state = live_state_poller.get_state() if live_state_poller else None
+            latest_voice_state = voice_client.consume_display_state() if voice_client else None
+            if latest_voice_state is not None:
+                voice_display_state = latest_voice_state
+
+            if live_state_poller is None and voice_client is not None:
+                voice_session_id = voice_client.active_session_id
+                if voice_session_id and voice_session_id != auto_live_state_session_id:
+                    auto_live_state_session_id = voice_session_id
+                    auto_live_state_poller = LiveDisplayStatePoller(
+                        _display_state_url_from_chat_url(args.assistant_chat_url, voice_session_id),
+                        args.display_state_poll_seconds,
+                    )
+
+            active_poller = live_state_poller or auto_live_state_poller
+            live_display_state = active_poller.get_state() if active_poller else voice_display_state
             if live_display_state is not None:
+                overlay_state = display_state_to_overlay(live_display_state)
+                overlay_state.badges.append(build_tracking_indicator(perf_counter()))
+            elif live_mode_enabled:
+                live_display_state = _build_empty_live_display_state(
+                    voice_client.status_message if voice_client else None
+                )
                 overlay_state = display_state_to_overlay(live_display_state)
                 overlay_state.badges.append(build_tracking_indicator(perf_counter()))
             else:
@@ -384,8 +587,13 @@ def main():
                 remaining_seconds = frame_wall_seconds - (perf_counter() - video_started_at)
                 frame_delay_ms = max(1, int(round(remaining_seconds * 1000)))
 
-            if preview_enabled and cv2.waitKey(frame_delay_ms) & 0xFF == ord("q"):
-                break
+            if preview_enabled:
+                key = cv2.waitKey(frame_delay_ms) & 0xFF
+                if key == ord("q"):
+                    break
+                if voice_client and voice_key is not None and key == voice_key:
+                    if not voice_client.trigger():
+                        print("[voice] Already handling a command.")
     finally:
         cap.release()
         if writer:

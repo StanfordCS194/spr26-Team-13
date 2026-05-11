@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 from src.assistant import mock_db
@@ -315,6 +316,42 @@ def test_display_state_api_returns_updated_state(monkeypatch):
     assert response.get_json()["display_state"]["exercise_name"] == "back squat"
     assert response.get_json()["display_state"]["set_progress"] == "Set 1 of 3"
     assert "display_state" not in assistant_response.get_json()["tool_result"]
+
+
+def test_display_state_api_returns_live_rest_countdown(monkeypatch):
+    mock_db.reset_mock_state()
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    assistant_response = client.post(
+        "/api/assistant/chat",
+        json={
+            "user_id": "demo-user",
+            "message": "start a set of 10 pushups",
+        },
+    )
+    session_id = assistant_response.get_json()["tool_result"]["session_id"]
+
+    client.post(
+        "/api/assistant/chat",
+        json={
+            "user_id": "demo-user",
+            "session_id": session_id,
+            "message": "start rest for 10 seconds",
+        },
+    )
+
+    first_payload = client.get(f"/api/display-state?session_id={session_id}").get_json()
+    mock_db.WORKOUT_SESSIONS[session_id]["rest_started_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=5)
+    ).isoformat()
+    second_payload = client.get(f"/api/display-state?session_id={session_id}").get_json()
+
+    assert first_payload["display_state"]["rest_total_seconds"] == 10
+    assert first_payload["display_state"]["rest_remaining_seconds"] <= 10
+    assert second_payload["display_state"]["rest_remaining_seconds"] <= 5
 
 
 def test_assistant_chat_api_requires_message():

@@ -108,6 +108,20 @@ def test_add_exercise_creates_current_planned_exercise(monkeypatch):
     assert "display_state" not in payload["tool_result"]
 
 
+def test_start_set_command_creates_fresh_bodyweight_exercise(monkeypatch):
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    payload = handle_message("start a set of 10 pushups", user_id="demo-user")
+
+    assert payload["action"]["action"] == "add_exercise"
+    assert payload["action"]["exercise_name"] == "push-ups"
+    assert payload["action"]["sets"] is None
+    assert payload["action"]["reps"] == 10
+    assert payload["display_state"]["exercise_name"] == "push-ups"
+    assert payload["display_state"]["set_progress"] == "Set 1 of 1"
+    assert payload["display_state"]["target_summary"] == "x 10"
+
+
 def test_log_set_resolves_this_exercise(monkeypatch):
     monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
 
@@ -133,3 +147,18 @@ def test_this_exercise_history_uses_active_exercise(monkeypatch):
     assert payload["action"]["action"] == "get_recent_exercise_history"
     assert payload["action"]["exercise_name"] == "bench press"
     assert "Last time for bench press" in payload["response"]
+
+
+def test_finish_workout_returns_completed_summary(monkeypatch):
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    added = handle_message("start a set of 10 pushups", user_id="demo-user")
+    session_id = added["tool_result"]["session_id"]
+    handle_message("log 10 reps", user_id="demo-user", session_id=session_id)
+
+    payload = handle_message("workout is complete", user_id="demo-user", session_id=session_id)
+
+    assert payload["action"]["action"] == "finish_workout"
+    assert payload["tool_result"]["status"] == "finished"
+    assert payload["tool_result"]["completed_sets"] == 1
+    assert payload["display_state"]["warning_message"] == "Workout complete"

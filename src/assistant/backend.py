@@ -14,6 +14,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
+from math import ceil
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -193,6 +194,7 @@ class InMemoryAssistantBackend(AssistantBackend):
         else:
             session["current_set_index"] = set_number
         session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
         return {
             "ok": True,
             "status": "logged",
@@ -218,6 +220,7 @@ class InMemoryAssistantBackend(AssistantBackend):
         max_index = max((exercise.get("sets") or 1) - 1, 0)
         session["current_set_index"] = min(session["current_set_index"] + 1, max_index)
         session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
         return {
             "ok": True,
             "status": "set_started",
@@ -234,6 +237,7 @@ class InMemoryAssistantBackend(AssistantBackend):
         session["current_exercise_index"] = min(session["current_exercise_index"] + 1, len(session["exercises"]) - 1)
         session["current_set_index"] = 0
         session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
         exercise = self._active_exercise(session)
         return {
             "ok": True,
@@ -250,6 +254,7 @@ class InMemoryAssistantBackend(AssistantBackend):
         session["current_exercise_index"] = session["exercises"].index(exercise)
         session["current_set_index"] = 0
         session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
         return {
             "ok": True,
             "status": "exercise_started",
@@ -287,6 +292,7 @@ class InMemoryAssistantBackend(AssistantBackend):
         session["current_exercise_index"] = len(session["exercises"]) - 1
         session["current_set_index"] = 0
         session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
         return {
             "ok": True,
             "status": "exercise_added",
@@ -299,6 +305,7 @@ class InMemoryAssistantBackend(AssistantBackend):
         session = self._get_or_create_session(user_id, session_id)
         duration = duration_seconds or 90
         session["rest_duration_seconds"] = duration
+        session["rest_started_at"] = _now_iso()
         return {
             "ok": True,
             "status": "rest_started",
@@ -311,10 +318,18 @@ class InMemoryAssistantBackend(AssistantBackend):
         session = self._get_or_create_session(user_id, session_id)
         session["status"] = "completed"
         session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
+        completed_sets = [
+            completed_set
+            for exercise in session.get("exercises", [])
+            for completed_set in exercise.get("completed_sets", [])
+        ]
         return {
             "ok": True,
             "status": "finished",
             "session_id": session["session_id"],
+            "completed_sets": len(completed_sets),
+            "exercises": [exercise["exercise_name"] for exercise in session.get("exercises", [])],
             "display_state": self.get_display_state(session["session_id"]).model_dump(mode="json"),
         }
 
@@ -331,12 +346,14 @@ class InMemoryAssistantBackend(AssistantBackend):
             return None
         exercise = self._active_exercise(session)
         if exercise is None:
+            rest_remaining, rest_total = _rest_remaining(session)
             return DisplayState(
                 exercise_name="Workout",
                 set_progress="No exercise selected",
                 rep_progress=None,
                 target_summary="Add or start an exercise",
-                rest_remaining_seconds=session.get("rest_duration_seconds"),
+                rest_remaining_seconds=rest_remaining,
+                rest_total_seconds=rest_total,
                 next_action="Choose your first exercise",
                 warning_message=None,
             )
@@ -352,13 +369,14 @@ class InMemoryAssistantBackend(AssistantBackend):
         if reps is not None:
             target_parts.append(f"x {reps}")
         target_summary = " ".join(target_parts) if target_parts else "No target set"
-        rest_remaining = session.get("rest_duration_seconds")
+        rest_remaining, rest_total = _rest_remaining(session)
         return DisplayState(
             exercise_name=exercise["exercise_name"],
             set_progress=f"Set {current_set} of {sets}",
             rep_progress=f"0 / {reps} reps" if reps is not None else None,
             target_summary=target_summary,
             rest_remaining_seconds=rest_remaining,
+            rest_total_seconds=rest_total,
             next_action="Rest, then start your next set" if rest_remaining else "Get set and start lifting",
             warning_message="Workout complete" if session.get("status") == "completed" else None,
         )
@@ -379,6 +397,7 @@ class InMemoryAssistantBackend(AssistantBackend):
             "current_exercise_index": 0,
             "current_set_index": 0,
             "rest_duration_seconds": None,
+            "rest_started_at": None,
             "exercises": [],
             "started_at": _now_iso(),
         }
@@ -608,6 +627,44 @@ class SupabaseRestBackend(InMemoryAssistantBackend):
             result["warning"] = "Backend unavailable; exercise was added in local demo state."
             return result
 
+    def start_rest(self, user_id: str, session_id: str | None, duration_seconds: int | None) -> dict[str, Any]:
+        result = super().start_rest(user_id, session_id, duration_seconds)
+        result["source"] = "supabase" if _supabase_configured() else "mock"
+        return result
+
+    def finish_workout(self, user_id: str, session_id: str | None) -> dict[str, Any]:
+        try:
+            remote_session_id = self._ensure_remote_session(user_id, session_id)
+            result = super().finish_workout(user_id, remote_session_id)
+            session = mock_db.WORKOUT_SESSIONS.get(remote_session_id, {})
+            completed_sets = [
+                completed_set
+                for exercise in session.get("exercises", [])
+                for completed_set in exercise.get("completed_sets", [])
+            ]
+            total_volume = sum(
+                (completed_set.get("weight") or 0) * (completed_set.get("reps") or 0)
+                for completed_set in completed_sets
+            )
+            self._update(
+                "workout_sessions",
+                remote_session_id,
+                {
+                    "status": "completed",
+                    "finished_at": _now_iso(),
+                    "duration_seconds": _duration_seconds(session.get("started_at")),
+                    "total_sets": len(completed_sets),
+                    "total_volume": total_volume,
+                },
+            )
+            result["source"] = "supabase"
+            return result
+        except BackendUnavailableError:
+            result = super().finish_workout(user_id, session_id)
+            result["source"] = "mock"
+            result["warning"] = "Backend unavailable; workout was finished in local demo state."
+            return result
+
     def _select_personal_records(self, user_id: str, exercise_name: str | None) -> list[dict[str, Any]]:
         params = [
             f"user_id=eq.{quote(user_id)}",
@@ -707,6 +764,9 @@ class SupabaseRestBackend(InMemoryAssistantBackend):
     def _insert(self, table: str, row: dict[str, Any]) -> list[dict[str, Any]]:
         return self._request("POST", table, row)
 
+    def _update(self, table: str, row_id: str, row: dict[str, Any]) -> list[dict[str, Any]]:
+        return self._request("PATCH", f"{table}?id=eq.{quote(row_id)}", row)
+
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         if not self.url or not self.key:
             raise BackendUnavailableError("Supabase credentials are not configured.")
@@ -732,6 +792,40 @@ class SupabaseRestBackend(InMemoryAssistantBackend):
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _duration_seconds(started_at: str | None) -> int | None:
+    started = _parse_iso(started_at)
+    if started is None:
+        return None
+    return max(0, int(round((datetime.now(timezone.utc) - started).total_seconds())))
+
+
+def _rest_remaining(session: dict[str, Any]) -> tuple[int | None, int | None]:
+    total = session.get("rest_duration_seconds")
+    if total is None:
+        return None, None
+
+    started = _parse_iso(session.get("rest_started_at"))
+    if started is None:
+        return int(total), int(total)
+
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    remaining = max(0, int(ceil(total - elapsed)))
+    if remaining <= 0:
+        session["rest_duration_seconds"] = None
+        session["rest_started_at"] = None
+        return None, None
+    return remaining, int(total)
 
 
 def _format_weight(weight: float | int) -> str:

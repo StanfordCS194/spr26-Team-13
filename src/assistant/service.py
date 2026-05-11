@@ -274,6 +274,11 @@ def _format_response(
     if action.action == "start_rest":
         return f"Starting a {result['duration_seconds']}-second rest."
     if action.action == "finish_workout":
+        completed_sets = result.get("completed_sets")
+        exercises = result.get("exercises") or []
+        if completed_sets is not None and exercises:
+            set_word = "set" if completed_sets == 1 else "sets"
+            return f"Workout finished. Logged {completed_sets} {set_word} across {', '.join(exercises)}."
         return "Workout finished."
     return "I can help with that once the action is supported."
 
@@ -403,7 +408,7 @@ def _parse_user_message_locally(
         return AssistantAction(action="get_recent_exercise_history", **base)
     if _looks_like_pr_query(text):
         return AssistantAction(action="get_pr", **base)
-    if "finish" in text and "workout" in text:
+    if ("finish" in text or "complete" in text or "done" in text) and "workout" in text:
         return AssistantAction(action="finish_workout", user_id=user_id, session_id=session_id)
     if "start" in text and "workout" in text:
         return AssistantAction(action="start_workout", user_id=user_id, session_id=session_id)
@@ -418,7 +423,7 @@ def _parse_user_message_locally(
             session_id=session_id,
             duration_seconds=_extract_duration_seconds(text),
         )
-    if _looks_like_add_exercise(text):
+    if _looks_like_add_exercise(text) or _looks_like_start_planned_set(text):
         return AssistantAction(
             action="add_exercise",
             user_id=user_id,
@@ -496,6 +501,10 @@ def _looks_like_add_exercise(text: str) -> bool:
     return "add" in text and ("exercise" in text or "lift" in text or _extract_exercise_name(text) is not None)
 
 
+def _looks_like_start_planned_set(text: str) -> bool:
+    return "start" in text and "set" in text and _extract_reps(text) is not None
+
+
 def _mentions_current_exercise(text: str) -> bool:
     return any(marker in text for marker in CONTEXT_EXERCISE_MARKERS)
 
@@ -511,10 +520,16 @@ def _extract_duration_seconds(text: str) -> int | None:
     minute_match = re.search(r"(\d+)\s*(?:minute|minutes|min|mins)\b", text)
     if minute_match:
         return int(minute_match.group(1)) * 60
+    word_minute_match = re.search(r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:minute|minutes|min|mins)\b", text)
+    if word_minute_match:
+        return _number_word_to_int(word_minute_match.group(1)) * 60
 
     second_match = re.search(r"(\d+)\s*(?:second|seconds|sec|secs|s)\b", text)
     if second_match:
         return int(second_match.group(1))
+    word_second_match = re.search(r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:second|seconds|sec|secs)\b", text)
+    if word_second_match:
+        return _number_word_to_int(word_second_match.group(1))
 
     bare_rest_match = re.search(r"rest(?:\s+for)?\s+(\d+)\b", text)
     if bare_rest_match:
@@ -527,6 +542,9 @@ def _extract_sets(text: str) -> int | None:
     sets_match = re.search(r"(\d+)\s*(?:set|sets)\b", text)
     if sets_match:
         return int(sets_match.group(1))
+    word_sets_match = re.search(r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:set|sets)\b", text)
+    if word_sets_match:
+        return _number_word_to_int(word_sets_match.group(1))
     return None
 
 
@@ -534,6 +552,9 @@ def _extract_reps(text: str) -> int | None:
     reps_match = re.search(r"(\d+)\s*(?:rep|reps)\b", text)
     if reps_match:
         return int(reps_match.group(1))
+    word_reps_match = re.search(r"\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:rep|reps)\b", text)
+    if word_reps_match:
+        return _number_word_to_int(word_reps_match.group(1))
 
     sets_of_match = re.search(r"\bsets?\s+of\s+(\d+)\b", text)
     if sets_of_match:
@@ -580,3 +601,18 @@ def _format_reps_tail(result: dict[str, Any]) -> str:
         return ""
     suffix = "rep" if reps == 1 else "reps"
     return f" for {reps} {suffix}"
+
+
+def _number_word_to_int(word: str) -> int:
+    return {
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+    }[word]

@@ -85,7 +85,7 @@ def create_app() -> Flask:
             if not upload or not upload.filename:
                 raise ValueError("Upload an image or document to process.")
 
-            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=False, use_cache=True)
+            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=True, use_cache=True)
             return jsonify(
                 {
                     "program": program.model_dump(mode="json"),

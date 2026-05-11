@@ -54,7 +54,8 @@ def _build_rest_widgets(state: DisplayState) -> tuple[list[OverlayBadge], list[O
     if state.rest_remaining_seconds is None:
         return [], []
 
-    rest_progress = max(0.0, min(1.0, 1.0 - (state.rest_remaining_seconds / 120.0)))
+    rest_total_seconds = state.rest_total_seconds or 120
+    rest_progress = max(0.0, min(1.0, 1.0 - (state.rest_remaining_seconds / rest_total_seconds)))
     return (
         [
             OverlayBadge(
