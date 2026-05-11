@@ -165,6 +165,7 @@ const ProgressRing = ({ value, size = 64, stroke = 4, color = 'var(--accent)', t
 
 // Bottom tab bar — Train / History / You. Pulses Train icon when a workout is live.
 const TabBar = ({ active, onTab, live = false }) => {
+  const isNativeApp = Boolean(window.TRAINAR_NATIVE_APP);
   const tabs = [
     { id: 'home',     icon: 'dumbbell', label: 'Train' },
     { id: 'calendar', icon: 'calendar', label: 'History' },
@@ -172,7 +173,11 @@ const TabBar = ({ active, onTab, live = false }) => {
   ];
   return (
     <div style={{
-      position: 'absolute', left: 16, right: 16, bottom: 14, height: 60,
+      position: isNativeApp ? 'fixed' : 'absolute',
+      left: 16,
+      right: 16,
+      bottom: isNativeApp ? 'calc(env(safe-area-inset-bottom, 0px) + 10px)' : 14,
+      height: 60,
       background: 'var(--tab-bar-bg)', backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)',
       border: '1px solid var(--hairline-2)',

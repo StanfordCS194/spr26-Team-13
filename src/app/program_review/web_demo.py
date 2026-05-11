@@ -11,7 +11,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
-from src.assistant.service import handle_message
+from src.assistant.service import AssistantUnavailableError, handle_message
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
 from src.ingestion.llm_normalizer import (
@@ -104,13 +104,19 @@ def create_app() -> Flask:
     def assistant_chat_api():
         payload = request.get_json(silent=True) or {}
         message = str(payload.get("message", "")).strip()
+        context = payload.get("context") if isinstance(payload.get("context"), dict) else None
         if not message:
             return jsonify({"error": "Message is required."}), 400
 
         try:
-            return jsonify(handle_message(message))
+            return jsonify(handle_message(message, context=context))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        except AssistantUnavailableError as exc:
+            return jsonify({"error": str(exc)}), 503
+        except Exception:
+            LOGGER.exception("Unexpected error while handling assistant message.")
+            return jsonify({"error": "Coach assistant failed. Try again."}), 500
 
     return app
 

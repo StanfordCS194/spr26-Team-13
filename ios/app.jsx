@@ -25,6 +25,7 @@ const SIGNUP_SCREENS = ['splash', 'auth', 'name', 'pair'];
 
 function App() {
   const auth = useAuth();
+  const isNativeApp = Boolean(window.TRAINAR_NATIVE_APP);
 
   // Where in the flow are we? Start at splash unless there's already a
   // signed-in user with a name — in that case skip straight to home.
@@ -51,6 +52,12 @@ function App() {
   const [saveError, setSaveError] = React.useState(null);
   const [savingProgram, setSavingProgram] = React.useState(false);
   const [dataVersion, setDataVersion] = React.useState(0);
+  const [glassesState, setGlassesState] = React.useState(() => ({
+    connected: window.TRAINAR_GLASSES_STATE?.connected ?? false,
+    battery: window.TRAINAR_GLASSES_STATE?.battery ?? null,
+    lastEvent: window.TRAINAR_GLASSES_STATE?.lastEvent ?? null,
+  }));
+  const [coachResponse, setCoachResponse] = React.useState(null);
 
   // Nav stack for the main phase. Pushing a sub-screen records what we
   // were on so the back button knows where to land.
@@ -155,6 +162,54 @@ function App() {
     go('past');
   };
 
+  React.useEffect(() => {
+    const onGlassesState = (event) => {
+      setGlassesState(event.detail || {});
+    };
+
+    const onGlassesEvent = (event) => {
+      const detail = event.detail || {};
+      const transcript = String(detail.payload?.transcript || '').toLowerCase();
+
+      if (detail.type !== 'voiceCommand') return;
+
+      if (window.askTrainARCoach && transcript) {
+        window.askTrainARCoach(transcript, {
+          activeProgramId,
+          currentWorkout: loadedToGlasses ? {
+            programId: activeProgramId,
+            sessionId: activeSessionId,
+            title: (window.PROGRAMS || []).find((program) => program.id === activeProgramId)?.name,
+          } : null,
+        }).catch((err) => {
+          setCoachResponse({ response: err.message || 'Coach assistant failed.' });
+        });
+      }
+
+      if (transcript.includes('finish') || transcript.includes('end workout')) {
+        finishWorkout();
+        return;
+      }
+
+      if (transcript.includes('start') || transcript.includes('begin workout')) {
+        startWorkout(activeProgramId || selectedProgramId || (window.PROGRAMS || [])[0]?.id || null);
+      }
+    };
+
+    const onCoachResponse = (event) => {
+      setCoachResponse(event.detail || null);
+    };
+
+    window.addEventListener('trainar:glasses-state', onGlassesState);
+    window.addEventListener('trainar:glasses', onGlassesEvent);
+    window.addEventListener('trainar:coach-response', onCoachResponse);
+    return () => {
+      window.removeEventListener('trainar:glasses-state', onGlassesState);
+      window.removeEventListener('trainar:glasses', onGlassesEvent);
+      window.removeEventListener('trainar:coach-response', onCoachResponse);
+    };
+  }, [activeProgramId, selectedProgramId, activeSessionId, loadedToGlasses]);
+
   const openWorkout = async (sessionId) => {
     if (window.selectPastWorkout) {
       try {
@@ -201,7 +256,8 @@ function App() {
     home: (
       <HomeScreen
         key={`home-${dataVersion}-${activeProgramId || 'none'}`}
-        glassesConnected={true}
+        glassesConnected={Boolean(glassesState.connected)}
+        glassesBattery={glassesState.battery}
         loadedToGlasses={loadedToGlasses}
         activeProgramId={activeProgramId}
         onAddProgram={() => go('add')}
@@ -213,7 +269,13 @@ function App() {
       />
     ),
     calendar: <CalendarScreen key={`calendar-${dataVersion}`} onOpenWorkout={openWorkout} />,
-    profile:  <ProfileScreen key={`profile-${dataVersion}`} user={auth.user} />,
+    profile:  (
+      <ProfileScreen
+        key={`profile-${dataVersion}-${glassesState.connected ? 'connected' : 'idle'}`}
+        user={auth.user}
+        glassesState={glassesState}
+      />
+    ),
 
     // ── Add-program flow (sub-screens of home) ──────────────────
     add: (
@@ -304,20 +366,46 @@ function App() {
   const showTabBar = SCREENS_WITH_TABBAR.includes(screen);
   const showSignoutDev = !SIGNUP_SCREENS.includes(screen) && screen !== 'pair';
 
+  const appSurface = (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      minHeight: isNativeApp ? '100vh' : 'auto',
+      position: 'relative',
+      background: 'var(--bg)',
+      color: 'var(--text-1)',
+      overflow: 'hidden',
+    }}>
+      {screens[screen]}
+      {showTabBar && (
+        <TabBar active={activeTab} live={loadedToGlasses} onTab={switchTab} />
+      )}
+      {coachResponse?.response && (
+        <CoachOverlay
+          response={coachResponse.response}
+          onClose={() => setCoachResponse(null)}
+        />
+      )}
+    </div>
+  );
+
   return (
-    <div style={{ padding: 32, position: 'relative' }}>
-      <IOSDevice width={PROTOTYPE_W} height={PROTOTYPE_H} dark={true}>
-        <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--bg)', color: 'var(--text-1)' }}>
-          {screens[screen]}
-          {showTabBar && (
-            <TabBar active={activeTab} live={loadedToGlasses} onTab={switchTab} />
-          )}
-        </div>
-      </IOSDevice>
+    <div style={{
+      padding: isNativeApp ? 0 : 32,
+      position: 'relative',
+      width: isNativeApp ? '100vw' : 'auto',
+      height: isNativeApp ? '100vh' : 'auto',
+      background: 'var(--bg)',
+    }}>
+      {isNativeApp ? appSurface : (
+        <IOSDevice width={PROTOTYPE_W} height={PROTOTYPE_H} dark={true}>
+          {appSurface}
+        </IOSDevice>
+      )}
 
       {/* Tiny dev affordance — sign out + reset, so the prototype can be
           replayed from splash without clearing localStorage by hand. */}
-      {showSignoutDev && (
+      {showSignoutDev && !isNativeApp && (
         <button onClick={restart} style={{
           position: 'absolute', top: 8, right: 8,
           padding: '6px 10px', borderRadius: 9999,
@@ -332,3 +420,62 @@ function App() {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
+const CoachOverlay = ({ response, onClose }) => (
+  <div style={{
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: 86,
+    zIndex: 8,
+    padding: 14,
+    borderRadius: 18,
+    background: 'rgba(20, 24, 18, 0.94)',
+    border: '1px solid rgba(197,242,62,0.24)',
+    boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+    display: 'flex',
+    gap: 12,
+    alignItems: 'flex-start',
+  }}>
+    <div style={{
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      flexShrink: 0,
+      background: 'var(--accent-soft)',
+      color: 'var(--accent)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <Icon name="sparkle" size={16} />
+    </div>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginBottom: 3 }}>
+        Coach
+      </div>
+      <div style={{ fontSize: 13, lineHeight: 1.35, color: 'var(--text-1)' }}>
+        {response}
+      </div>
+    </div>
+    <button
+      onClick={onClose}
+      aria-label="Dismiss coach response"
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        border: '1px solid var(--hairline)',
+        background: 'var(--overlay-1)',
+        color: 'var(--text-2)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      <Icon name="x" size={14} />
+    </button>
+  </div>
+);

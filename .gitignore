@@ -9,3 +9,8 @@ desktop/node_modules/
 desktop/dist/
 desktop/.vite/
 desktop/*.log
+
+# Native iOS local build/user state
+native-ios/**/xcuserdata/
+native-ios/**/DerivedData/
+native-ios/**/*.xcuserstate

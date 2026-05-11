@@ -9,8 +9,11 @@
 // ─────────────────────────────────────────────────────────────
 const Screen = ({ children, padTop = 60, padBottom = 40, style = {} }) => (
   <div className="no-scrollbar fade-up" style={{
-    width: '100%', height: '100%', background: 'var(--bg)',
-    paddingTop: padTop, paddingBottom: padBottom,
+    width: '100%',
+    height: window.TRAINAR_NATIVE_APP ? '100dvh' : '100%',
+    background: 'var(--bg)',
+    paddingTop: window.TRAINAR_NATIVE_APP ? `calc(${padTop}px + env(safe-area-inset-top, 0px))` : padTop,
+    paddingBottom: window.TRAINAR_NATIVE_APP ? `calc(${padBottom}px + env(safe-area-inset-bottom, 0px))` : padBottom,
     overflowY: 'auto', position: 'relative',
     fontFamily: 'var(--font-sans)', color: 'var(--text-1)',
     ...style,

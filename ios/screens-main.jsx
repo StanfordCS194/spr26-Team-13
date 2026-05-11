@@ -19,6 +19,7 @@ const HomeScreen = ({
   onActivate,
   onFinish,
   glassesConnected = true,
+  glassesBattery = 78,
   loadedToGlasses = false,
   activeProgramId = null,
 }) => {
@@ -41,7 +42,7 @@ const HomeScreen = ({
         display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
       }}>
         <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.5 }}>Train</div>
-        <GlassesPill connected={glassesConnected} battery={78} />
+        <GlassesPill connected={glassesConnected} battery={glassesBattery || 78} />
       </div>
 
       {/* Add program CTA — disabled while a workout is active. */}
