@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from src.assistant.service import handle_message
+from src.assistant.tools import get_display_state
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
 from src.ingestion.llm_normalizer import (
@@ -39,7 +40,7 @@ def create_app() -> Flask:
     def add_api_cors_headers(response):
         if request.path.startswith("/api/"):
             response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
-            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return response
 
@@ -104,13 +105,27 @@ def create_app() -> Flask:
     def assistant_chat_api():
         payload = request.get_json(silent=True) or {}
         message = str(payload.get("message", "")).strip()
+        user_id = str(payload.get("user_id", "demo-user")).strip() or "demo-user"
+        session_id = payload.get("session_id")
+        session_id = str(session_id).strip() if session_id else None
         if not message:
             return jsonify({"error": "Message is required."}), 400
 
         try:
-            return jsonify(handle_message(message))
+            return jsonify(handle_message(message, user_id=user_id, session_id=session_id))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/display-state")
+    def display_state_api():
+        session_id = request.args.get("session_id")
+        if not session_id:
+            return jsonify({"error": "session_id is required."}), 400
+
+        display_state = get_display_state(session_id)
+        if display_state is None:
+            return jsonify({"error": "No display state found for that session."}), 404
+        return jsonify({"display_state": display_state})
 
     return app
 

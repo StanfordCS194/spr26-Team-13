@@ -5,11 +5,14 @@ renders the result over a webcam frame or demo video for quick visual testing.
 """
 
 import argparse
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from math import ceil
 from pathlib import Path
 from time import perf_counter
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import cv2
 
@@ -115,6 +118,16 @@ def _parse_args():
         "--no-preview",
         action="store_true",
         help="Render without opening a preview window. Useful with --output.",
+    )
+    parser.add_argument(
+        "--display-state-url",
+        help="Optional API URL to poll for live DisplayState JSON instead of scripted demo state.",
+    )
+    parser.add_argument(
+        "--display-state-poll-seconds",
+        type=float,
+        default=0.5,
+        help="Minimum interval between live DisplayState API polls.",
     )
     return parser.parse_args()
 
@@ -250,6 +263,32 @@ def draw_overlay(frame, state: DisplayState):
     return OverlayRenderer().render(frame, overlay_state)
 
 
+class LiveDisplayStatePoller:
+    """Polls an API endpoint for DisplayState without owning workout logic."""
+
+    def __init__(self, url: str, poll_seconds: float) -> None:
+        self.url = url
+        self.poll_seconds = max(poll_seconds, 0.1)
+        self.last_polled_at = 0.0
+        self.last_state: DisplayState | None = None
+
+    def get_state(self) -> DisplayState | None:
+        now = perf_counter()
+        if self.last_state is not None and now - self.last_polled_at < self.poll_seconds:
+            return self.last_state
+
+        self.last_polled_at = now
+        try:
+            with urlopen(self.url, timeout=1.5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (OSError, URLError, TimeoutError, json.JSONDecodeError):
+            return self.last_state
+
+        raw_state = payload.get("display_state", payload)
+        self.last_state = DisplayState.model_validate(raw_state)
+        return self.last_state
+
+
 def main():
     args = _parse_args()
     if args.playback_speed <= 0:
@@ -259,6 +298,11 @@ def main():
 
     controller = DemoOverlayController()
     renderer = OverlayRenderer()
+    live_state_poller = (
+        LiveDisplayStatePoller(args.display_state_url, args.display_state_poll_seconds)
+        if args.display_state_url
+        else None
+    )
     using_video = args.video is not None
     video_path = args.video.expanduser() if args.video else None
     output_path = args.output.expanduser() if args.output else None
@@ -306,7 +350,12 @@ def main():
             if using_video:
                 elapsed_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
 
-            overlay_state = controller.build_state(elapsed_seconds=elapsed_seconds)
+            live_display_state = live_state_poller.get_state() if live_state_poller else None
+            if live_display_state is not None:
+                overlay_state = display_state_to_overlay(live_display_state)
+                overlay_state.badges.append(build_tracking_indicator(perf_counter()))
+            else:
+                overlay_state = controller.build_state(elapsed_seconds=elapsed_seconds)
             frame = renderer.render(frame, overlay_state)
 
             if output_path and writer is None:

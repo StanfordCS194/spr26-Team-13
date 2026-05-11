@@ -35,9 +35,24 @@ EXERCISE_ALIASES: dict[str, str] = {
 
 LOGGED_SETS: list[dict[str, Any]] = []
 
-WORKOUT_STATE: dict[str, Any] = {
-    "active": False,
-    "current_exercise": None,
-    "resting": False,
-    "rest_duration_seconds": None,
+EXERCISE_HISTORY: dict[str, dict[str, list[dict[str, Any]]]] = {
+    "demo-user": {
+        "bench press": [
+            {"exercise_name": "bench press", "weight": 225, "reps": 4, "unit": "lb", "completed_at": "2026-05-01"},
+            {"exercise_name": "bench press", "weight": 205, "reps": 6, "unit": "lb", "completed_at": "2026-04-24"},
+        ],
+        "back squat": [
+            {"exercise_name": "back squat", "weight": 315, "reps": 2, "unit": "lb", "completed_at": "2026-05-02"},
+            {"exercise_name": "back squat", "weight": 285, "reps": 5, "unit": "lb", "completed_at": "2026-04-25"},
+        ],
+    }
 }
+
+WORKOUT_SESSIONS: dict[str, dict[str, Any]] = {}
+
+
+def reset_mock_state() -> None:
+    """Reset mutable in-memory session data for tests and local demos."""
+
+    LOGGED_SETS.clear()
+    WORKOUT_SESSIONS.clear()

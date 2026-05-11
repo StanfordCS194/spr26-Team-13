@@ -1,5 +1,6 @@
 from io import BytesIO
 
+from src.assistant import mock_db
 from src.app.program_review import create_app
 from src.contracts import (
     BlockExecutionStyle,
@@ -272,6 +273,7 @@ def test_program_review_api_requires_upload():
 
 
 def test_assistant_chat_api_returns_response(monkeypatch):
+    mock_db.reset_mock_state()
     app = create_app()
     client = app.test_client()
 
@@ -283,16 +285,36 @@ def test_assistant_chat_api_returns_response(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.get_json() == {
-        "response": "Your back squat PR is 315 pounds for 2 reps.",
-        "action": {
-            "action": "get_pr",
-            "exercise_name": "back squat",
-            "weight": None,
-            "reps": None,
-            "duration_seconds": None,
+    payload = response.get_json()
+    assert payload["response"] == "Your back squat PR is 315 lb for 2 reps."
+    assert payload["action"]["action"] == "get_pr"
+    assert payload["action"]["exercise_name"] == "back squat"
+    assert payload["tool_result"]["source"] == "mock"
+    assert payload["display_state"] is None
+
+
+def test_display_state_api_returns_updated_state(monkeypatch):
+    mock_db.reset_mock_state()
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    assistant_response = client.post(
+        "/api/assistant/chat",
+        json={
+            "user_id": "demo-user",
+            "message": "Add 3 sets of 10 back squat at 225",
         },
-    }
+    )
+
+    session_id = assistant_response.get_json()["tool_result"]["session_id"]
+    response = client.get(f"/api/display-state?session_id={session_id}")
+
+    assert response.status_code == 200
+    assert response.get_json()["display_state"]["exercise_name"] == "back squat"
+    assert response.get_json()["display_state"]["set_progress"] == "Set 1 of 3"
+    assert "display_state" not in assistant_response.get_json()["tool_result"]
 
 
 def test_assistant_chat_api_requires_message():
