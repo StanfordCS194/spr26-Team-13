@@ -72,19 +72,22 @@ def parse_user_message(
     return parsed_action
 
 
-def handle_message(message: str) -> dict[str, Any]:
+def handle_message(message: str, *, context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Parse a message, execute the matching tool, and format a response."""
 
     action = parse_user_message(message)
-    result = _execute_action(action)
+    result = _execute_action(action, context=context)
     return {
-        "response": _format_response(action, result),
+        "response": _format_response(action, result, context=context),
         "action": action.model_dump(mode="json"),
     }
 
 
-def _execute_action(action: AssistantAction) -> dict[str, Any]:
+def _execute_action(action: AssistantAction, *, context: dict[str, Any] | None = None) -> dict[str, Any]:
     if action.action == "get_pr":
+        contextual_pr = _get_contextual_pr(action.exercise_name, context=context)
+        if contextual_pr is not None:
+            return contextual_pr
         return tools.get_pr(action.exercise_name)
     if action.action == "log_set":
         return tools.log_set(action.exercise_name, action.reps, action.weight)
@@ -96,6 +99,8 @@ def _execute_action(action: AssistantAction) -> dict[str, Any]:
         return tools.start_rest(action.duration_seconds)
     if action.action == "finish_workout":
         return tools.finish_workout()
+    if context:
+        return _answer_from_context(context)
     return {
         "ok": False,
         "status": "unknown",
@@ -103,14 +108,23 @@ def _execute_action(action: AssistantAction) -> dict[str, Any]:
     }
 
 
-def _format_response(action: AssistantAction, result: dict[str, Any]) -> str:
+def _format_response(
+    action: AssistantAction,
+    result: dict[str, Any],
+    *,
+    context: dict[str, Any] | None = None,
+) -> str:
     if not result.get("ok"):
         return str(result.get("message") or "I could not handle that workout request yet.")
 
+    if result.get("status") == "context_answer":
+        return str(result["message"])
     if action.action == "get_pr":
+        display_name = result.get("display_name") if context else result["exercise_name"]
         return (
-            f"Your {result['exercise_name']} PR is "
-            f"{_format_weight(result['weight'])} pounds for {result['reps']} reps."
+            f"Your {display_name} PR is "
+            f"{_format_weight(result['weight'])} {result.get('unit') or 'pounds'}"
+            f"{_format_reps_tail(result)}."
         )
     if action.action == "log_set":
         return (
@@ -126,6 +140,103 @@ def _format_response(action: AssistantAction, result: dict[str, Any]) -> str:
     if action.action == "finish_workout":
         return "Workout finished."
     return "I can help with that once the action is supported."
+
+
+def _get_contextual_pr(
+    exercise_name: str | None,
+    *,
+    context: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not context:
+        return None
+
+    prs = context.get("personalRecords")
+    if not isinstance(prs, list):
+        return None
+
+    normalized_query = tools.normalize_exercise_name(exercise_name)
+    candidates = []
+    for record in prs:
+        if not isinstance(record, dict):
+            continue
+        name = str(record.get("exercise_name") or record.get("exerciseName") or "").strip()
+        if not name:
+            continue
+        normalized_name = tools.normalize_exercise_name(name) or name.lower()
+        if normalized_query and normalized_query not in normalized_name and normalized_name not in normalized_query:
+            continue
+        candidates.append(record)
+
+    if not candidates and normalized_query:
+        return {
+            "ok": False,
+            "status": "not_found",
+            "exercise_name": normalized_query,
+            "message": f"I do not see a saved PR for {normalized_query} in your account yet.",
+        }
+    if not candidates:
+        return None
+
+    record = candidates[0]
+    value = record.get("value") or record.get("weight")
+    if value is None:
+        return None
+
+    return {
+        "ok": True,
+        "status": "found",
+        "exercise_name": str(record.get("exercise_name") or record.get("exerciseName") or normalized_query),
+        "display_name": str(record.get("exercise_name") or record.get("exerciseName") or normalized_query),
+        "weight": float(value),
+        "unit": str(record.get("unit") or "lb"),
+        "reps": record.get("reps"),
+    }
+
+
+def _answer_from_context(context: dict[str, Any]) -> dict[str, Any]:
+    active_program = context.get("activeProgram") if isinstance(context.get("activeProgram"), dict) else None
+    current_workout = context.get("currentWorkout") if isinstance(context.get("currentWorkout"), dict) else None
+    programs = context.get("programs") if isinstance(context.get("programs"), list) else []
+    sessions = context.get("recentSessions") if isinstance(context.get("recentSessions"), list) else []
+
+    if current_workout:
+        title = current_workout.get("title") or current_workout.get("programName") or "this workout"
+        return {
+            "ok": True,
+            "status": "context_answer",
+            "message": f"You are in {title}. Keep the next set controlled and tell me the reps and weight when you finish.",
+        }
+
+    if active_program:
+        name = active_program.get("name") or active_program.get("title") or "your active program"
+        exercises = active_program.get("exercises") if isinstance(active_program.get("exercises"), list) else []
+        first = exercises[0].get("name") if exercises and isinstance(exercises[0], dict) else None
+        if first:
+            message = f"Your next programmed move is {first} from {name}. Start it when you are ready."
+        else:
+            message = f"{name} is loaded. Start the workout when you are ready and I will track the flow."
+        return {"ok": True, "status": "context_answer", "message": message}
+
+    if programs:
+        names = [str(program.get("name") or program.get("title")) for program in programs[:3] if isinstance(program, dict)]
+        return {
+            "ok": True,
+            "status": "context_answer",
+            "message": f"You have {len(programs)} saved program{'s' if len(programs) != 1 else ''}. I see {', '.join(names)}.",
+        }
+
+    if sessions:
+        return {
+            "ok": True,
+            "status": "context_answer",
+            "message": f"I see {len(sessions)} recent workout{'s' if len(sessions) != 1 else ''}. Ask me about a PR or start a workout when ready.",
+        }
+
+    return {
+        "ok": True,
+        "status": "context_answer",
+        "message": "I do not see saved training data for this account yet. Add a program, then I can coach from it.",
+    }
 
 
 def _parse_user_message_locally(message: str) -> AssistantAction:
@@ -212,3 +323,10 @@ def _extract_weight(text: str) -> float | None:
 
 def _format_weight(weight: float | int) -> str:
     return str(int(weight)) if float(weight).is_integer() else str(weight)
+
+
+def _format_reps_tail(result: dict[str, Any]) -> str:
+    reps = result.get("reps")
+    if reps is None:
+        return ""
+    return f" for {reps} reps"

@@ -5,7 +5,7 @@
 // when those wire up to a real backend they'll just need data sources, not
 // shape changes.
 
-const ProfileScreen = ({ user }) => {
+const ProfileScreen = ({ user, glassesState = {} }) => {
   // Backend friend can pass in `user` directly, or we fall back to whatever
   // useAuth has stashed in localStorage.
   const fallback = (() => {
@@ -21,6 +21,35 @@ const ProfileScreen = ({ user }) => {
   const email = u.email || 'alex@stanford.edu';
   const initial = (name[0] || 'A').toUpperCase();
   const device = (window.TRAINAR_DEVICES || [])[0];
+  const nativeConnected = Boolean(glassesState.connected);
+  const displayBattery = glassesState.battery || device?.battery_percent || 78;
+  const displayName = glassesState.deviceName || device?.name || 'Mock Ray-Ban Meta';
+  const isNativeBridge = Boolean(window.TRAINAR_NATIVE_APP);
+
+  const sendMockCommand = (type, payload = {}) => {
+    if (window.sendTrainARNativeCommand && window.sendTrainARNativeCommand(type, payload)) return;
+
+    if (type === 'mockConnect') {
+      window.dispatchEvent(new CustomEvent('trainar:glasses', {
+        detail: { type: 'connected', payload: { deviceName: displayName, battery: String(displayBattery) } },
+      }));
+    }
+    if (type === 'mockDisconnect') {
+      window.dispatchEvent(new CustomEvent('trainar:glasses', {
+        detail: { type: 'disconnected', payload: { deviceName: displayName } },
+      }));
+    }
+    if (type === 'mockVoiceCommand') {
+      window.dispatchEvent(new CustomEvent('trainar:glasses', {
+        detail: { type: 'voiceCommand', payload: { transcript: payload.transcript || 'Start my workout' } },
+      }));
+    }
+    if (type === 'mockPhotoCapture') {
+      window.dispatchEvent(new CustomEvent('trainar:glasses', {
+        detail: { type: 'photoCaptured', payload: { source: 'mock', contentType: 'image/jpeg' } },
+      }));
+    }
+  };
 
   const settingsRows = [
     { i: 'user',      l: 'Account & profile' },
@@ -77,13 +106,13 @@ const ProfileScreen = ({ user }) => {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 600 }}>
-                {device ? `${device.name || 'TrainAR'} · ${device.model || 'M2'}` : 'TrainAR · M2'}
+                {device ? `${device.name || 'TrainAR'} · ${device.model || 'M2'}` : displayName}
               </div>
               <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
                 SN · {(device?.serial_number || '8E40-B7C2').replace('-', '·')}
               </div>
             </div>
-            <Pill accent>● {device?.connection_status === 'connected' ? 'Connected' : 'Ready'}</Pill>
+            <Pill accent>● {nativeConnected || device?.connection_status === 'connected' ? 'Connected' : 'Ready'}</Pill>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -95,12 +124,12 @@ const ProfileScreen = ({ user }) => {
                 fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase',
                 letterSpacing: 0.4, marginBottom: 4,
               }}>Battery</div>
-              <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>{device?.battery_percent || 78}%</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>{displayBattery}%</div>
               <div style={{
                 marginTop: 6, height: 3, borderRadius: 2,
                 background: 'var(--overlay-2)', overflow: 'hidden',
               }}>
-                <div style={{ width: `${device?.battery_percent || 78}%`, height: '100%', background: 'var(--accent)' }} />
+                <div style={{ width: `${displayBattery}%`, height: '100%', background: 'var(--accent)' }} />
               </div>
             </div>
             <div style={{
@@ -113,6 +142,63 @@ const ProfileScreen = ({ user }) => {
               }}>Firmware</div>
               <div className="mono" style={{ fontSize: 18, fontWeight: 600 }}>{device?.firmware_version || '1.4.2'}</div>
               <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 6 }}>Up to date</div>
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: 14,
+            paddingTop: 14,
+            borderTop: '1px solid var(--hairline)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 10,
+              gap: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Glasses pairing demo</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                  {isNativeBridge ? 'Native bridge controls' : 'Browser fallback controls'}
+                </div>
+              </div>
+              <Pill>{nativeConnected ? 'Live' : 'Mock'}</Pill>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button
+                className="press"
+                onClick={() => sendMockCommand(nativeConnected ? 'mockDisconnect' : 'mockConnect')}
+                style={pairingButtonStyle(nativeConnected ? 'surface' : 'accent')}
+              >
+                <Icon name={nativeConnected ? 'x' : 'bluetooth'} size={16} />
+                {nativeConnected ? 'Disconnect' : 'Connect'}
+              </button>
+              <button
+                className="press"
+                onClick={() => sendMockCommand('mockVoiceCommand', { transcript: 'Start my workout' })}
+                style={pairingButtonStyle('surface')}
+              >
+                <Icon name="sparkle" size={16} />
+                Voice prompt
+              </button>
+              <button
+                className="press"
+                onClick={() => sendMockCommand('mockPhotoCapture')}
+                style={pairingButtonStyle('surface')}
+              >
+                <Icon name="camera" size={16} />
+                Photo event
+              </button>
+              <button
+                className="press"
+                onClick={() => sendMockCommand('mockVoiceCommand', { transcript: 'What should I do?' })}
+                style={pairingButtonStyle('surface')}
+              >
+                <Icon name="bolt" size={16} />
+                Ask coach
+              </button>
             </div>
           </div>
         </Card>
@@ -150,3 +236,20 @@ const ProfileScreen = ({ user }) => {
 };
 
 Object.assign(window, { ProfileScreen });
+
+const pairingButtonStyle = (variant) => ({
+  minHeight: 40,
+  borderRadius: 12,
+  border: variant === 'accent' ? 'none' : '1px solid var(--hairline)',
+  background: variant === 'accent' ? 'var(--accent)' : 'var(--surface-2)',
+  color: variant === 'accent' ? 'var(--on-accent)' : 'var(--text-1)',
+  fontFamily: 'var(--font-sans)',
+  fontSize: 12,
+  fontWeight: 700,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 7,
+  cursor: 'pointer',
+  padding: '0 10px',
+});
