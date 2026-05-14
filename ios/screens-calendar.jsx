@@ -3,16 +3,20 @@
 
 const CalendarScreen = ({ onOpenWorkout }) => {
   const days = window.ACTIVITY || [];
-  // Render April 2026. Supabase-backed data provides this directly; the
-  // old 84-day buffer remains as a fallback for static demo mode.
-  const monthDays = window.ACTIVITY_MONTH_DAYS || Array.from({ length: 30 }, (_, i) => days[40 + i] || 0);
-  const firstDayOffset = 2; // April 1 2026 was a Wed → Mon-first grid offset of 2.
+  const sessions = window.TRAINAR_SESSIONS || [];
+  const initialMonth = React.useMemo(() => getInitialCalendarMonth(sessions), []);
+  const [visibleMonth, setVisibleMonth] = React.useState(initialMonth);
+  const year = visibleMonth.getFullYear();
+  const monthIndex = visibleMonth.getMonth();
+  const monthDays = buildCalendarMonthDays(sessions, year, monthIndex, days);
+  const monthSessionIds = buildCalendarMonthSessions(sessions, year, monthIndex);
+  const firstDayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7;
+  const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(visibleMonth);
+  const stats = buildCalendarMonthStats(sessions, year, monthIndex, monthDays);
+  const today = new Date();
 
-  const stats = window.ACTIVITY_STATS || {
-    sessions: monthDays.filter((d) => d > 0).length,
-    streak: 4,
-    volume: '184k',
-    rpe: 7.9,
+  const moveMonth = (delta) => {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
   };
 
   const intensities = {
@@ -63,17 +67,17 @@ const CalendarScreen = ({ onOpenWorkout }) => {
         padding: '0 20px 14px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button className="press" style={{
+        <button onClick={() => moveMonth(-1)} className="press" style={{
           width: 32, height: 32, borderRadius: 9999,
           background: 'var(--surface-1)', border: '1px solid var(--hairline)', color: 'var(--text-1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}><Icon name="chevron-left" size={14} /></button>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>April 2026</div>
-        <button className="press" style={{
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel}</div>
+        <button onClick={() => moveMonth(1)} className="press" style={{
           width: 32, height: 32, borderRadius: 9999,
-          background: 'var(--surface-1)', border: '1px solid var(--hairline)', color: 'var(--text-3)',
+          background: 'var(--surface-1)', border: '1px solid var(--hairline)', color: 'var(--text-1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="chevron-right" size={14} stroke="var(--text-3)" /></button>
+        }}><Icon name="chevron-right" size={14} /></button>
       </div>
 
       {/* Day-of-week labels. */}
@@ -96,9 +100,9 @@ const CalendarScreen = ({ onOpenWorkout }) => {
         {Array.from({ length: firstDayOffset }).map((_, i) => <div key={'empty-' + i} />)}
         {monthDays.map((v, i) => {
           const day = i + 1;
-          const isToday = day === 27;
+          const isToday = today.getFullYear() === year && today.getMonth() === monthIndex && today.getDate() === day;
           const cell = intensities[v];
-          const sessionId = window.TRAINAR_MONTH_SESSION_IDS?.[day]?.id;
+          const sessionId = monthSessionIds[day]?.id;
           return (
             <button
               key={i}
@@ -181,3 +185,76 @@ const CalendarScreen = ({ onOpenWorkout }) => {
 };
 
 Object.assign(window, { CalendarScreen });
+
+function getInitialCalendarMonth(sessions) {
+  const validDates = (sessions || [])
+    .map((session) => new Date(session.started_at || session.created_at))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => b - a);
+  const date = validDates[0] || new Date();
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function buildCalendarMonthDays(sessions, year, monthIndex, fallbackDays) {
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, () => 0);
+
+  (sessions || []).forEach((session) => {
+    const date = new Date(session.started_at || session.created_at);
+    if (Number.isNaN(date.getTime())) return;
+    if (date.getFullYear() !== year || date.getMonth() !== monthIndex) return;
+    const volume = Number(session.total_volume || 0);
+    days[date.getDate() - 1] = Math.max(
+      days[date.getDate() - 1],
+      volume > 20000 ? 3 : session.total_sets > 12 ? 2 : 1,
+    );
+  });
+
+  if (!sessions?.length && year === 2026 && monthIndex === 3 && window.ACTIVITY_MONTH_DAYS) {
+    return window.ACTIVITY_MONTH_DAYS;
+  }
+  if (!sessions?.length && fallbackDays?.length) {
+    return Array.from({ length: daysInMonth }, (_, i) => fallbackDays[40 + i] || 0);
+  }
+  return days;
+}
+
+function buildCalendarMonthSessions(sessions, year, monthIndex) {
+  return (sessions || []).reduce((ids, session) => {
+    const date = new Date(session.started_at || session.created_at);
+    if (Number.isNaN(date.getTime())) return ids;
+    if (date.getFullYear() !== year || date.getMonth() !== monthIndex) return ids;
+    const day = date.getDate();
+    const existing = ids[day];
+    if (!existing || date > new Date(existing.started_at || existing.created_at)) {
+      ids[day] = session;
+    }
+    return ids;
+  }, {});
+}
+
+function buildCalendarMonthStats(sessions, year, monthIndex, monthDays) {
+  const monthSessions = (sessions || []).filter((session) => {
+    const date = new Date(session.started_at || session.created_at);
+    return !Number.isNaN(date.getTime()) && date.getFullYear() === year && date.getMonth() === monthIndex;
+  });
+  const totalVolume = monthSessions.reduce((sum, session) => sum + Number(session.total_volume || 0), 0);
+  const rpeSessions = monthSessions.filter((session) => Number(session.avg_rpe || 0) > 0);
+  const avgRpe = rpeSessions.length
+    ? rpeSessions.reduce((sum, session) => sum + Number(session.avg_rpe || 0), 0) / rpeSessions.length
+    : 0;
+
+  return {
+    sessions: monthSessions.length || monthDays.filter((d) => d > 0).length,
+    streak: longestCalendarStreak(monthDays),
+    volume: totalVolume >= 1000 ? `${Math.round(totalVolume / 1000)}k` : String(Math.round(totalVolume)),
+    rpe: avgRpe ? Number(avgRpe.toFixed(1)) : 0,
+  };
+}
+
+function longestCalendarStreak(monthDays) {
+  return monthDays.reduce((best, value) => {
+    const current = value > 0 ? best.current + 1 : 0;
+    return { current, longest: Math.max(best.longest, current) };
+  }, { current: 0, longest: 0 }).longest;
+}

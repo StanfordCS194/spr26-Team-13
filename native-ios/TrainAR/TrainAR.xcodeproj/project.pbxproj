@@ -265,7 +265,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = H57LY8ZTRH;
+				DEVELOPMENT_TEAM = 7LG9P8F837;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrainAR/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.2;
@@ -274,7 +274,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = edu.stanford.trainar;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.gavinsherry.TrainAR-com.gavinsherry.TrainAR-com.gsherry.TrainAR";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -292,7 +292,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = H57LY8ZTRH;
+				DEVELOPMENT_TEAM = 7LG9P8F837;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrainAR/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.2;
@@ -301,7 +301,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = edu.stanford.trainar;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.gavinsherry.TrainAR-com.gavinsherry.TrainAR-com.gsherry.TrainAR";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;

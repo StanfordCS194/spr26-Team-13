@@ -42,8 +42,10 @@
 	<string>TrainAR uses Bluetooth to connect to Meta wearable devices.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>TrainAR uses camera input from wearable devices to understand workout context.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TrainAR connects to the local development server running on your Mac.</string>
 	<key>TRAINAR_WEB_URL</key>
-	<string>http://127.0.0.1:5002/ios/</string>
+	<string>http://10.35.6.240:5002/ios/</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

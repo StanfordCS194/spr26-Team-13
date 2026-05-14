@@ -5,7 +5,7 @@
 // when those wire up to a real backend they'll just need data sources, not
 // shape changes.
 
-const ProfileScreen = ({ user, glassesState = {} }) => {
+const ProfileScreen = ({ user, glassesState = {}, onSignOut }) => {
   // Backend friend can pass in `user` directly, or we fall back to whatever
   // useAuth has stashed in localStorage.
   const fallback = (() => {
@@ -230,6 +230,30 @@ const ProfileScreen = ({ user, glassesState = {} }) => {
             </div>
           ))}
         </Card>
+        <button
+          onClick={onSignOut}
+          className="press"
+          style={{
+            width: '100%',
+            marginTop: 12,
+            minHeight: 48,
+            borderRadius: 16,
+            background: 'var(--surface-1)',
+            border: '1px solid var(--hairline)',
+            color: '#FF8A7A',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 14,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            cursor: 'pointer',
+          }}
+        >
+          <Icon name="x" size={16} stroke="#FF8A7A" />
+          Sign out
+        </button>
       </div>
     </Screen>
   );

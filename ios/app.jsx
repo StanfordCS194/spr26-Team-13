@@ -117,8 +117,12 @@ function App() {
     setStack([]);
   };
 
-  const restart = () => {
-    auth.signOut();
+  const restart = async () => {
+    try {
+      await auth.signOut();
+    } catch (err) {
+      console.error('Could not sign out:', err);
+    }
     setLoadedToGlasses(false);
     setActiveProgramId(null);
     setActiveSessionId(null);
@@ -274,6 +278,7 @@ function App() {
         key={`profile-${dataVersion}-${glassesState.connected ? 'connected' : 'idle'}`}
         user={auth.user}
         glassesState={glassesState}
+        onSignOut={restart}
       />
     ),
 
