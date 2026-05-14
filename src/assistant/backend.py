@@ -24,7 +24,7 @@ from src.assistant import mock_db
 from src.assistant.mock_db import EXERCISE_ALIASES
 from src.contracts import DisplayState
 
-DEFAULT_USER_ID = "demo-user"
+DEFAULT_USER_ID = os.getenv("TRAINAR_DEFAULT_USER_ID", "demo-user")
 DEFAULT_UNIT = "lb"
 
 
@@ -468,7 +468,10 @@ class SupabaseRestBackend(InMemoryAssistantBackend):
 
     def get_pr(self, user_id: str, exercise_name: str) -> dict[str, Any]:
         normalized_name = normalize_exercise_name(exercise_name)
-        rows = self._select_personal_records(user_id, normalized_name)
+        try:
+            rows = self._select_personal_records(user_id, normalized_name)
+        except BackendUnavailableError:
+            return super().get_pr(user_id, exercise_name)
         if not rows:
             return super().get_pr(user_id, exercise_name)
         best = rows[0]
@@ -486,7 +489,10 @@ class SupabaseRestBackend(InMemoryAssistantBackend):
 
     def get_recent_exercise_history(self, user_id: str, exercise_name: str, limit: int = 5) -> dict[str, Any]:
         normalized_name = normalize_exercise_name(exercise_name)
-        rows = self._select_exercise_logs_with_sets(user_id, normalized_name, limit=limit)
+        try:
+            rows = self._select_exercise_logs_with_sets(user_id, normalized_name, limit=limit)
+        except BackendUnavailableError:
+            return super().get_recent_exercise_history(user_id, exercise_name, limit=limit)
         if not rows:
             return super().get_recent_exercise_history(user_id, exercise_name, limit=limit)
         history = self._flatten_exercise_history(rows, normalized_name, limit)

@@ -25,9 +25,10 @@ from src.contracts import (
     OverlayState,
     OverlayTextLine,
 )
+from src.assistant import tools
 from src.glasses.display.adapter import build_tracking_indicator, display_state_to_overlay
 from src.glasses.display.renderer import OverlayRenderer
-from src.assistant.voice import VoiceInputUnavailableError, record_and_transcribe
+from src.assistant.voice import ToggleVoiceRecorder, VoiceInputUnavailableError, record_and_transcribe
 
 DEFAULT_CAMERA_WIDTH = 1280
 DEFAULT_CAMERA_HEIGHT = 720
@@ -47,6 +48,8 @@ class DemoExercise:
     rep_start_seconds: float
     rep_end_seconds: float
     rest_seconds: int
+    weight: float | None = None
+    unit: str = "lb"
 
     @property
     def countdown_start_seconds(self) -> float:
@@ -68,6 +71,7 @@ DEMO_EXERCISES = (
         rep_start_seconds=12.0,
         rep_end_seconds=42.0,
         rest_seconds=9,
+        weight=30,
     ),
     DemoExercise(
         name="Bench Press",
@@ -148,13 +152,27 @@ def _parse_args():
     parser.add_argument(
         "--voice-key",
         default="p",
-        help="Keyboard key that starts a fixed-duration push-to-talk recording.",
+        help="Keyboard key that toggles voice recording on and off.",
     )
     parser.add_argument(
         "--voice-seconds",
         type=float,
         default=4.0,
-        help="Seconds to record after pressing the voice key.",
+        help="Seconds to record when --voice-fixed-duration is enabled.",
+    )
+    parser.add_argument(
+        "--voice-fixed-duration",
+        action="store_true",
+        help="Use the old fixed-duration recording mode instead of press-to-toggle.",
+    )
+    parser.add_argument(
+        "--persist-scripted-workout",
+        action="store_true",
+        help="Persist the scripted demo workout to the configured assistant backend.",
+    )
+    parser.add_argument(
+        "--program-id",
+        help="Optional Supabase program id to associate with a persisted scripted workout.",
     )
     return parser.parse_args()
 
@@ -355,13 +373,17 @@ class AssistantVoiceClient:
         user_id: str,
         session_id: str | None,
         record_seconds: float,
+        fixed_duration: bool,
     ) -> None:
         self.chat_url = chat_url
         self.user_id = user_id
         self.session_id = session_id
         self.record_seconds = record_seconds
+        self.fixed_duration = fixed_duration
         self._lock = threading.Lock()
         self._busy = False
+        self._recording = False
+        self._recorder: ToggleVoiceRecorder | None = None
         self._latest_display_state: DisplayState | None = None
         self._status_message = "Press voice key to talk"
 
@@ -382,6 +404,34 @@ class AssistantVoiceClient:
             return state
 
     def trigger(self) -> bool:
+        if self.fixed_duration:
+            return self._trigger_fixed_duration()
+
+        with self._lock:
+            if self._busy:
+                return False
+            if self._recording:
+                self._busy = True
+                self._recording = False
+                self._status_message = "Processing voice command..."
+                thread = threading.Thread(target=self._stop_recording_and_send, daemon=True)
+                thread.start()
+                return True
+
+            try:
+                self._recorder = ToggleVoiceRecorder()
+                self._recorder.start()
+            except VoiceInputUnavailableError as exc:
+                self._status_message = str(exc)
+                print(f"[voice] {exc}")
+                return False
+
+            self._recording = True
+            self._status_message = "Listening... press voice key again to send"
+            print("[voice] Listening. Press voice key again to send.")
+            return True
+
+    def _trigger_fixed_duration(self) -> bool:
         with self._lock:
             if self._busy:
                 return False
@@ -392,46 +442,75 @@ class AssistantVoiceClient:
         thread.start()
         return True
 
-    def _record_and_send(self) -> None:
+    def _stop_recording_and_send(self) -> None:
         try:
-            print(f"[voice] Recording for {self.record_seconds:g}s...")
-            transcript = record_and_transcribe(duration_seconds=self.record_seconds)
-            if not transcript:
-                self._set_status("No speech detected")
-                print("[voice] No speech detected.")
+            recorder = self._recorder
+            self._recorder = None
+            if recorder is None:
+                self._set_status("No voice recording was active")
                 return
 
-            self._set_status(f"Heard: {transcript}")
-            print(f"[voice] Heard: {transcript}")
-            response = self._post_message(transcript)
-            display_state = response.get("display_state")
-            if display_state:
-                with self._lock:
-                    self._latest_display_state = DisplayState.model_validate(display_state)
-
-            tool_result = response.get("tool_result")
-            if isinstance(tool_result, dict) and tool_result.get("session_id"):
-                with self._lock:
-                    self.session_id = str(tool_result["session_id"])
-
-            print(f"[assistant] {response.get('response', '')}")
-            self._set_status(str(response.get("response") or "Assistant command sent"))
+            print("[voice] Recording stopped. Transcribing...")
+            transcript = recorder.stop_and_transcribe()
+            self._send_transcript(transcript)
         except (VoiceInputUnavailableError, ValueError) as exc:
             self._set_status(str(exc))
             print(f"[voice] {exc}")
         except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            message = f"Assistant API returned HTTP {exc.code}"
-            if body:
-                message = f"{message}: {body[:240]}"
-            self._set_status(message)
-            print(f"[voice] {message}")
+            self._handle_http_error(exc)
         except Exception as exc:
             self._set_status("Voice command failed")
             print(f"[voice] Command failed: {exc}")
         finally:
             with self._lock:
                 self._busy = False
+
+    def _record_and_send(self) -> None:
+        try:
+            print(f"[voice] Recording for {self.record_seconds:g}s...")
+            transcript = record_and_transcribe(duration_seconds=self.record_seconds)
+            self._send_transcript(transcript)
+        except (VoiceInputUnavailableError, ValueError) as exc:
+            self._set_status(str(exc))
+            print(f"[voice] {exc}")
+        except HTTPError as exc:
+            self._handle_http_error(exc)
+        except Exception as exc:
+            self._set_status("Voice command failed")
+            print(f"[voice] Command failed: {exc}")
+        finally:
+            with self._lock:
+                self._busy = False
+
+    def _send_transcript(self, transcript: str) -> None:
+        if not transcript:
+            self._set_status("No speech detected")
+            print("[voice] No speech detected.")
+            return
+
+        self._set_status(f"Heard: {transcript}")
+        print(f"[voice] Heard: {transcript}")
+        response = self._post_message(transcript)
+        display_state = response.get("display_state")
+        if display_state:
+            with self._lock:
+                self._latest_display_state = DisplayState.model_validate(display_state)
+
+        tool_result = response.get("tool_result")
+        if isinstance(tool_result, dict) and tool_result.get("session_id"):
+            with self._lock:
+                self.session_id = str(tool_result["session_id"])
+
+        print(f"[assistant] {response.get('response', '')}")
+        self._set_status(str(response.get("response") or "Assistant command sent"))
+
+    def _handle_http_error(self, exc: HTTPError) -> None:
+        body = exc.read().decode("utf-8", errors="replace")
+        message = f"Assistant API returned HTTP {exc.code}"
+        if body:
+            message = f"{message}: {body[:240]}"
+        self._set_status(message)
+        print(f"[voice] {message}")
 
     def _post_message(self, transcript: str) -> dict:
         payload = {
@@ -457,12 +536,79 @@ class AssistantVoiceClient:
             self._status_message = message
 
 
+class ScriptedWorkoutPersister:
+    """Writes the canned overlay workout through the assistant backend once."""
+
+    def __init__(self, *, user_id: str, program_id: str | None = None) -> None:
+        self.user_id = user_id
+        self.program_id = program_id
+        self.session_id: str | None = None
+        self.started = False
+        self.finished = False
+        self.logged_exercise_names: set[str] = set()
+
+    def update(self, elapsed_seconds: float) -> None:
+        if self.finished:
+            return
+        if not self.started:
+            self._start()
+
+        for exercise in DEMO_EXERCISES:
+            if elapsed_seconds >= exercise.rep_end_seconds and exercise.name not in self.logged_exercise_names:
+                self._log_exercise(exercise)
+
+        if elapsed_seconds >= max(exercise.rest_end_seconds for exercise in DEMO_EXERCISES):
+            self._finish()
+
+    def _start(self) -> None:
+        result = tools.start_workout(self.user_id, program_id=self.program_id)
+        self.session_id = result.get("session_id")
+        self.started = True
+        print(f"[scripted] Started persisted workout: {self.session_id}")
+
+    def _log_exercise(self, exercise: DemoExercise) -> None:
+        if not self.session_id:
+            return
+        tools.add_exercise(
+            self.user_id,
+            self.session_id,
+            exercise.name,
+            sets=1,
+            reps=exercise.rep_goal,
+            weight=exercise.weight,
+            unit=exercise.unit,
+        )
+        tools.log_set(
+            self.user_id,
+            self.session_id,
+            exercise.name,
+            exercise.rep_goal,
+            exercise.weight,
+            unit=exercise.unit,
+        )
+        self.logged_exercise_names.add(exercise.name)
+        load_text = f" at {exercise.weight:g} {exercise.unit}" if exercise.weight is not None else ""
+        print(f"[scripted] Logged {exercise.rep_goal} reps of {exercise.name}{load_text}")
+
+    def _finish(self) -> None:
+        if not self.session_id:
+            return
+        result = tools.finish_workout(self.user_id, self.session_id)
+        self.finished = True
+        print(
+            "[scripted] Finished persisted workout "
+            f"{self.session_id} with {result.get('completed_sets', 0)} completed sets"
+        )
+
+
 def main():
     args = _parse_args()
     if args.playback_speed <= 0:
         raise ValueError("--playback-speed must be greater than 0")
     if args.output and args.loop:
         raise ValueError("--output cannot be used with --loop because export would never finish")
+    if args.persist_scripted_workout and args.loop:
+        raise ValueError("--persist-scripted-workout cannot be used with --loop because it would duplicate sessions")
 
     controller = DemoOverlayController()
     renderer = OverlayRenderer()
@@ -479,6 +625,7 @@ def main():
             user_id=args.user_id,
             session_id=args.session_id,
             record_seconds=args.voice_seconds,
+            fixed_duration=args.voice_fixed_duration,
         )
         if args.assistant_chat_url
         else None
@@ -486,6 +633,11 @@ def main():
     voice_key = ord(args.voice_key[:1]) if args.voice_key else None
     voice_display_state: DisplayState | None = None
     live_mode_enabled = bool(live_state_poller or voice_client)
+    scripted_persister = (
+        ScriptedWorkoutPersister(user_id=args.user_id, program_id=args.program_id)
+        if args.persist_scripted_workout
+        else None
+    )
     using_video = args.video is not None
     video_path = args.video.expanduser() if args.video else None
     output_path = args.output.expanduser() if args.output else None
@@ -532,6 +684,11 @@ def main():
             elapsed_seconds = None
             if using_video:
                 elapsed_seconds = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            elif scripted_persister is not None:
+                elapsed_seconds = (datetime.now() - controller.phase_started_at).total_seconds()
+
+            if scripted_persister is not None:
+                scripted_persister.update(elapsed_seconds or 0.0)
 
             latest_voice_state = voice_client.consume_display_state() if voice_client else None
             if latest_voice_state is not None:

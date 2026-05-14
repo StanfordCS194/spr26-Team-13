@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import wave
 from pathlib import Path
 
@@ -31,6 +32,71 @@ DEFAULT_SAMPLE_RATE = 16000
 
 class VoiceInputUnavailableError(RuntimeError):
     """Raised when local microphone capture or transcription is unavailable."""
+
+
+class ToggleVoiceRecorder:
+    """Record microphone audio between explicit start and stop calls."""
+
+    def __init__(self, *, sample_rate: int = DEFAULT_SAMPLE_RATE) -> None:
+        if sd is None:
+            raise VoiceInputUnavailableError(
+                "Microphone recording requires the sounddevice package. "
+                "Install project dependencies, then try again."
+            )
+        self.sample_rate = sample_rate
+        self._chunks: list[bytes] = []
+        self._lock = threading.Lock()
+        self._stream = None
+
+    @property
+    def is_recording(self) -> bool:
+        return self._stream is not None
+
+    def start(self) -> None:
+        if self._stream is not None:
+            return
+        with self._lock:
+            self._chunks.clear()
+
+        def callback(indata, frames, time, status):
+            if status:
+                return
+            with self._lock:
+                self._chunks.append(indata.copy().tobytes())
+
+        self._stream = sd.InputStream(
+            samplerate=self.sample_rate,
+            channels=1,
+            dtype="int16",
+            callback=callback,
+        )
+        self._stream.start()
+
+    def stop_to_wav(self, path: Path) -> None:
+        if self._stream is None:
+            raise VoiceInputUnavailableError("Voice recording has not started.")
+
+        self._stream.stop()
+        self._stream.close()
+        self._stream = None
+
+        with self._lock:
+            frames = b"".join(self._chunks)
+            self._chunks.clear()
+
+        if not frames:
+            raise VoiceInputUnavailableError("No microphone audio was captured.")
+        _write_wav(path, frames, sample_rate=self.sample_rate)
+
+    def stop_and_transcribe(self, *, model: str | None = None) -> str:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as handle:
+            audio_path = Path(handle.name)
+
+        try:
+            self.stop_to_wav(audio_path)
+            return transcribe_audio_file(audio_path, model=model)
+        finally:
+            audio_path.unlink(missing_ok=True)
 
 
 def record_and_transcribe(
@@ -71,11 +137,15 @@ def record_wav(
     audio = sd.rec(frame_count, samplerate=sample_rate, channels=1, dtype="int16")
     sd.wait()
 
+    _write_wav(path, audio.tobytes(), sample_rate=sample_rate)
+
+
+def _write_wav(path: Path, frames: bytes, *, sample_rate: int) -> None:
     with wave.open(str(path), "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(sample_rate)
-        wav_file.writeframes(audio.tobytes())
+        wav_file.writeframes(frames)
 
 
 def transcribe_audio_file(path: Path, *, model: str | None = None) -> str:
