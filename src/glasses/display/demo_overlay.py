@@ -19,7 +19,9 @@ from src.contracts import (
     OverlayPlacement,
     OverlayState,
     OverlayTextLine,
+    TriggerType,
 )
+from src.glasses.audio.motivational import speak_phrase
 from src.glasses.display.adapter import build_tracking_indicator, display_state_to_overlay
 from src.glasses.display.renderer import OverlayRenderer
 
@@ -116,6 +118,11 @@ def _parse_args():
         action="store_true",
         help="Render without opening a preview window. Useful with --output.",
     )
+    parser.add_argument(
+        "--audio-cues",
+        action="store_true",
+        help="Speak motivational audio cues at key workout transitions.",
+    )
     return parser.parse_args()
 
 
@@ -152,8 +159,32 @@ def _build_countdown_panel(seconds_remaining: int) -> OverlayPanel:
 class DemoOverlayController:
     """Simulates runtime-driven overlay updates without hard-wiring camera logic to UI."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, audio_cues: bool = False) -> None:
         self.phase_started_at = datetime.now()
+        self._audio_cues = audio_cues
+        self._fired_cues: set[str] = set()
+
+    def reset_cues(self) -> None:
+        self._fired_cues.clear()
+
+    def _maybe_fire_cue(self, exercise: DemoExercise, elapsed: float) -> None:
+        if not self._audio_cues:
+            return
+
+        key = f"{exercise.name}:{TriggerType.EXERCISE_START.value}"
+        if elapsed >= exercise.rep_start_seconds and key not in self._fired_cues:
+            self._fired_cues.add(key)
+            speak_phrase(TriggerType.EXERCISE_START, exercise_name=exercise.name)
+
+        key = f"{exercise.name}:{TriggerType.SET_COMPLETE.value}"
+        if elapsed >= exercise.rep_end_seconds and key not in self._fired_cues:
+            self._fired_cues.add(key)
+            speak_phrase(TriggerType.SET_COMPLETE)
+
+        key = f"{exercise.name}:{TriggerType.REST_START.value}"
+        if elapsed >= exercise.rep_end_seconds + 1.0 and key not in self._fired_cues:
+            self._fired_cues.add(key)
+            speak_phrase(TriggerType.REST_START, rest_seconds=exercise.rest_seconds)
 
     def _build_display_state(
         self,
@@ -230,6 +261,7 @@ class DemoOverlayController:
             if elapsed < exercise.rest_end_seconds:
                 state, rest_progress = self._build_display_state(exercise, elapsed)
                 overlay_state = display_state_to_overlay(state, now=now)
+                self._maybe_fire_cue(exercise, elapsed)
 
                 if exercise.countdown_start_seconds <= elapsed < exercise.rep_start_seconds:
                     countdown_remaining = ceil(exercise.rep_start_seconds - elapsed)
@@ -238,6 +270,10 @@ class DemoOverlayController:
         else:
             overlay_state = self._build_workout_complete_state(elapsed)
             rest_progress = None
+            wc_key = "WORKOUT_COMPLETE"
+            if self._audio_cues and wc_key not in self._fired_cues:
+                self._fired_cues.add(wc_key)
+                speak_phrase(TriggerType.WORKOUT_COMPLETE)
 
         if rest_progress is not None and overlay_state.progress_bars:
             overlay_state.progress_bars[0].progress = rest_progress
@@ -257,7 +293,7 @@ def main():
     if args.output and args.loop:
         raise ValueError("--output cannot be used with --loop because export would never finish")
 
-    controller = DemoOverlayController()
+    controller = DemoOverlayController(audio_cues=args.audio_cues)
     renderer = OverlayRenderer()
     using_video = args.video is not None
     video_path = args.video.expanduser() if args.video else None
@@ -299,6 +335,7 @@ def main():
                 if using_video and args.loop:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     video_started_at = perf_counter()
+                    controller.reset_cues()
                     continue
                 break
 

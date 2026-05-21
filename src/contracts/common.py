@@ -58,3 +58,4 @@ class TriggerType(str, Enum):
     SET_COMPLETE = "set_complete"
     REST_START = "rest_start"
     REST_END = "rest_end"
+    WORKOUT_COMPLETE = "workout_complete"
