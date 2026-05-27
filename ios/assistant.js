@@ -1,9 +1,9 @@
 // Glasses coach adapter.
 //
-// Supabase data is already loaded into window.* by data.js under the signed-in
-// user's RLS-protected session. This adapter packages that state as context for
-// the local assistant endpoint so coach responses can refer to saved programs,
-// workout history, PRs, and device state.
+// Posts the user's spoken transcript to the thin /api/chat backend, which
+// returns a free-form trainer reply. The richer tool-calling /api/assistant/chat
+// route is left untouched for other callers; buildCoachContext is preserved
+// below so a future integration can switch back without a JS rewrite.
 (function () {
   async function askTrainARCoach(message, options = {}) {
     const cleanMessage = String(message || '').trim();
@@ -11,13 +11,10 @@
       throw new Error('Message is required.');
     }
 
-    const response = await fetch('/api/assistant/chat', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: cleanMessage,
-        context: buildCoachContext(options),
-      }),
+      body: JSON.stringify({ text: cleanMessage }),
     });
 
     const payload = await response.json().catch(() => ({}));
@@ -25,17 +22,32 @@
       throw new Error(payload.error || 'Coach assistant failed.');
     }
 
+    // Normalize on `response` so existing listeners (CoachOverlay, wake-word
+    // border reset) keep working unchanged.
+    const reply = String(payload.reply || '').trim();
+    const normalized = { response: reply };
+
     window.dispatchEvent(new CustomEvent('trainar:coach-response', {
-      detail: payload,
+      detail: normalized,
     }));
+
+    // Speak the reply through whatever audio route the native shell is on
+    // (phone speaker, AirPods, Ray-Ban Meta, …). The WebView bootstrap
+    // forwards this CustomEvent to a `speakResponse` postMessage, which
+    // AppleVoiceBridge handles with AVSpeechSynthesizer.
+    if (reply) {
+      window.dispatchEvent(new CustomEvent('trainar:speak', {
+        detail: { text: reply },
+      }));
+    }
 
     if (window.sendTrainARNativeCommand) {
       window.sendTrainARNativeCommand('coachResponse', {
-        response: payload.response || '',
+        response: reply,
       });
     }
 
-    return payload;
+    return normalized;
   }
 
   function buildCoachContext(options = {}) {

@@ -58,6 +58,9 @@ function App() {
     lastEvent: window.TRAINAR_GLASSES_STATE?.lastEvent ?? null,
   }));
   const [coachResponse, setCoachResponse] = React.useState(null);
+  // True from wakeWordDetected → coach-response arrival. Drives the green
+  // "I'm in a coach turn" border around the whole app surface.
+  const [wakeActive, setWakeActive] = React.useState(false);
 
   // Nav stack for the main phase. Pushing a sub-screen records what we
   // were on so the back button knows where to land.
@@ -171,6 +174,11 @@ function App() {
       const detail = event.detail || {};
       const transcript = String(detail.payload?.transcript || '').toLowerCase();
 
+      if (detail.type === 'wakeWordDetected') {
+        setWakeActive(true);
+        return;
+      }
+
       if (detail.type !== 'voiceCommand') return;
 
       if (window.askTrainARCoach && transcript) {
@@ -198,6 +206,8 @@ function App() {
 
     const onCoachResponse = (event) => {
       setCoachResponse(event.detail || null);
+      // Coach turn is over — drop the green listening border.
+      setWakeActive(false);
     };
 
     window.addEventListener('trainar:glasses-state', onGlassesState);
@@ -386,6 +396,7 @@ function App() {
           onClose={() => setCoachResponse(null)}
         />
       )}
+      {wakeActive && <WakeListeningBorder isNativeApp={isNativeApp} />}
     </div>
   );
 
@@ -420,6 +431,25 @@ function App() {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
+// Full-bleed lime border that lights up the moment the wake word is heard
+// and stays on through the round-trip until the coach response arrives.
+// `position: absolute; inset: 0` sits over the whole appSurface; pointer-
+// events disabled so it never swallows taps meant for the UI underneath.
+const WakeListeningBorder = ({ isNativeApp }) => (
+  <div
+    aria-hidden="true"
+    style={{
+      position: 'absolute',
+      inset: 0,
+      pointerEvents: 'none',
+      border: '4px solid var(--accent)',
+      boxShadow: 'inset 0 0 28px rgba(197, 242, 62, 0.45)',
+      borderRadius: isNativeApp ? 0 : 38,
+      zIndex: 9,
+    }}
+  />
+);
 
 const CoachOverlay = ({ response, onClose }) => (
   <div style={{

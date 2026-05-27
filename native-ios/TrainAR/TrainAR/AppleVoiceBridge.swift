@@ -366,32 +366,16 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         recognitionTask = nil
     }
 
-    /// Called once the captured utterance is finalized. Fires the chat call.
+    /// Called once the captured utterance is finalized. Emits the transcript
+    /// as a `voiceCommand` event and returns to wake-word listening; the
+    /// React layer owns the round-trip to the backend and any reply rendering.
     private func finishUtteranceCapture(transcript: String) {
         guard mode == .capturingUtterance else { return }
         stopRecognition()
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         emit(type: "listening", payload: ["state": "stopped"])
         emit(type: "voiceCommand", payload: ["transcript": trimmed])
-
-        guard !trimmed.isEmpty else {
-            startWakeWordDetection()
-            return
-        }
-
-        mode = .awaitingReply
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let reply = try await self.postChat(text: trimmed)
-                await MainActor.run { self.speak(text: reply) }
-            } catch {
-                await MainActor.run {
-                    self.emit(type: "chatError", payload: ["message": error.localizedDescription])
-                    self.speak(text: "Sorry, I had trouble reaching the coach.")
-                }
-            }
-        }
+        startWakeWordDetection()
     }
 
     // MARK: - Chat API
