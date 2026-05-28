@@ -29,6 +29,21 @@ Optional override (defaults to `gpt-4.1-mini`):
 OPENAI_CHAT_MODEL=gpt-4.1-mini
 ```
 
+### Supabase project config
+
+Backend-executed coach tools use the signed-in user's Supabase JWT, but the
+Flask server still needs the public project URL and anon/publishable key:
+
+```
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_or_publishable_key
+```
+
+Use the same project values as the browser client in `ios/supabase.js`, or copy
+them from the Supabase dashboard. If these are missing, `/api/chat` still runs,
+but coach actions fall back to the local demo behavior instead of writing to
+Supabase.
+
 ### Run the server
 
 ```bash
@@ -180,9 +195,7 @@ viable for always-listening).
 
 ## What this branch does NOT do
 
-- **Tool calling / Supabase writes** — lives on PR #82, kept separate.
 - **Display HUD on the glasses** — would require Meta DAT SDK + the
   Display-glasses display APIs.
 - **Camera / photo capture** — same, DAT SDK territory.
-- **Multi-turn memory** — each `/api/chat` call is independent.
 - **Non-English wake words** — locale hardcoded to en-US.

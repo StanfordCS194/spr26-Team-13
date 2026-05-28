@@ -15,7 +15,15 @@ struct TrainARWebView<B: GlassesBridge>: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsBackForwardNavigationGestures = false
+        webView.scrollView.delegate = context.coordinator
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
         context.coordinator.attach(webView)
 
         webView.load(URLRequest(url: Self.webURL))
@@ -66,7 +74,7 @@ extension TrainARWebView {
     }
 }
 
-final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
     private let bridge: B
     private weak var webView: WKWebView?
     private var eventTask: Task<Void, Never>?
@@ -93,6 +101,10 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScr
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         bridge.replayState()
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        nil
     }
 
     private func startForwardingEvents() {

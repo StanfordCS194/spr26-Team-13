@@ -23,6 +23,117 @@ const SCREENS_WITH_TABBAR = TAB_ROOTS;
 // off the stack to whatever was underneath.
 const SIGNUP_SCREENS = ['splash', 'auth', 'name', 'pair'];
 
+function firstWorkoutStep(programId, day = null) {
+  const detail = window.getProgramDetail && programId ? window.getProgramDetail(programId) : window.PROGRAM_DETAIL;
+  const selectedDay = day || resolveWorkoutDay(programId, null);
+  const exercise = getDayExercises(selectedDay, detail)[0];
+  if (!exercise) return null;
+  return {
+    exerciseName: exercise.name,
+    exerciseNumber: 1,
+    setNumber: 1,
+    setCount: Number.parseInt(exercise.sets, 10) || 1,
+    repTarget: exercise.reps || null,
+    loadTarget: exercise.load || null,
+    restSeconds: parseRestSecondsForCoach(exercise.rest),
+  };
+}
+
+function nextStepForProgram(programId, currentStep, { nextExercise = false, day = null } = {}) {
+  const detail = window.getProgramDetail && programId ? window.getProgramDetail(programId) : window.PROGRAM_DETAIL;
+  const selectedDay = day || resolveWorkoutDay(programId, null);
+  const exercises = getDayExercises(selectedDay, detail);
+  if (!exercises.length) return null;
+  if (!currentStep) return firstWorkoutStep(programId, selectedDay);
+
+  const currentIndex = exercises.findIndex((exercise) => (
+    normalizeCoachName(exercise.name) === normalizeCoachName(currentStep.exerciseName)
+  ));
+  if (currentIndex < 0) return firstWorkoutStep(programId, selectedDay);
+  const currentExercise = exercises[currentIndex] || exercises[0];
+  const setCount = Number.parseInt(currentStep.setCount || currentExercise.sets, 10) || 1;
+  const setNumber = Number.parseInt(currentStep.setNumber, 10) || 1;
+
+  if (!nextExercise && setNumber < setCount) {
+    return { ...currentStep, setNumber: setNumber + 1, setCount };
+  }
+
+  const nextIndex = currentIndex + 1;
+  if (nextIndex >= exercises.length) return null;
+  const next = exercises[nextIndex];
+  return {
+    exerciseName: next.name,
+    exerciseNumber: nextIndex + 1,
+    setNumber: 1,
+    setCount: Number.parseInt(next.sets, 10) || 1,
+    repTarget: next.reps || null,
+    loadTarget: next.load || null,
+    restSeconds: parseRestSecondsForCoach(next.rest),
+  };
+}
+
+function resolveWorkoutDay(programId, requestedDay = null) {
+  const detail = window.getProgramDetail && programId ? window.getProgramDetail(programId) : window.PROGRAM_DETAIL;
+  const days = detail?.days || [];
+  if (!days.length) return null;
+  if (requestedDay?.id) {
+    return days.find((day) => day.id === requestedDay.id) || requestedDay;
+  }
+  if (requestedDay?.dayNumber) {
+    return days.find((day) => Number(day.dayNumber || 0) === Number(requestedDay.dayNumber)) || days[requestedDay.dayNumber - 1] || days[0];
+  }
+  if (requestedDay?.title) {
+    const query = normalizeCoachName(requestedDay.title);
+    return days.find((day) => normalizeCoachName(day.title).includes(query) || query.includes(normalizeCoachName(day.title))) || days[0];
+  }
+  return days[0];
+}
+
+function getDayExercises(day, detail) {
+  if (day?.blocks?.length) {
+    return day.blocks.flatMap((block) => block.exercises || []);
+  }
+  return detail?.exercises || [];
+}
+
+function parseRestSecondsForCoach(rest) {
+  const text = String(rest || '').toLowerCase();
+  const value = Number.parseInt(text, 10);
+  if (!Number.isFinite(value)) return null;
+  return text.includes('min') ? value * 60 : value;
+}
+
+function findProgramByName(programName) {
+  const query = normalizeCoachName(programName);
+  if (!query) return null;
+  let best = null;
+  let bestScore = 0;
+  (window.PROGRAMS || []).forEach((program) => {
+    const name = normalizeCoachName(program.name || program.title);
+    if (!name) return;
+    const score = name === query || name.includes(query) || query.includes(name)
+      ? 1
+      : nameSimilarity(query, name);
+    if (score > bestScore) {
+      best = program;
+      bestScore = score;
+    }
+  });
+  return bestScore >= 0.68 ? best : null;
+}
+
+function normalizeCoachName(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function nameSimilarity(left, right) {
+  if (!left || !right) return 0;
+  const leftSet = new Set(left.split(' '));
+  const rightWords = right.split(' ');
+  const overlap = rightWords.filter((word) => leftSet.has(word)).length;
+  return overlap / Math.max(leftSet.size, rightWords.length, 1);
+}
+
 function App() {
   const auth = useAuth();
   const isNativeApp = Boolean(window.TRAINAR_NATIVE_APP);
@@ -45,8 +156,20 @@ function App() {
   const [loadedToGlasses, setLoadedToGlasses] = React.useState(false);
   const [activeProgramId, setActiveProgramId] = React.useState(null);
   const [activeSessionId, setActiveSessionId] = React.useState(null);
+  const [activeWorkoutDay, setActiveWorkoutDay] = React.useState(null);
+  const [activeWorkoutStep, setActiveWorkoutStep] = React.useState(null);
+  const [activeRest, setActiveRest] = React.useState(null);
+  const activeProgramIdRef = React.useRef(activeProgramId);
+  const activeSessionIdRef = React.useRef(activeSessionId);
+  const activeWorkoutDayRef = React.useRef(activeWorkoutDay);
+  const activeWorkoutStepRef = React.useRef(activeWorkoutStep);
+  const activeRestRef = React.useRef(activeRest);
+  const loadedToGlassesRef = React.useRef(loadedToGlasses);
+  const coachTurnIdRef = React.useRef(0);
+  const appliedCoachTurnIdRef = React.useRef(0);
   const [selectedProgramId, setSelectedProgramId] = React.useState(null);
   const [selectedProgramFile, setSelectedProgramFile] = React.useState(null);
+  const [selectedPastWorkout, setSelectedPastWorkout] = React.useState(window.PAST_WORKOUT || null);
   const [parsedProgram, setParsedProgram] = React.useState(window.PARSED_PROGRAM || null);
   const [parseError, setParseError] = React.useState(null);
   const [saveError, setSaveError] = React.useState(null);
@@ -76,6 +199,15 @@ function App() {
     window.addEventListener('trainar:data', onData);
     return () => window.removeEventListener('trainar:data', onData);
   }, []);
+
+  React.useEffect(() => {
+    activeProgramIdRef.current = activeProgramId;
+    activeSessionIdRef.current = activeSessionId;
+    activeWorkoutDayRef.current = activeWorkoutDay;
+    activeWorkoutStepRef.current = activeWorkoutStep;
+    activeRestRef.current = activeRest;
+    loadedToGlassesRef.current = loadedToGlasses;
+  }, [activeProgramId, activeSessionId, activeWorkoutDay, activeWorkoutStep, activeRest, loadedToGlasses]);
 
   React.useEffect(() => {
     if (auth.pending) return;
@@ -122,9 +254,18 @@ function App() {
 
   const restart = () => {
     auth.signOut();
+    loadedToGlassesRef.current = false;
+    activeProgramIdRef.current = null;
+    activeSessionIdRef.current = null;
+    activeWorkoutDayRef.current = null;
+    activeWorkoutStepRef.current = null;
+    activeRestRef.current = null;
     setLoadedToGlasses(false);
     setActiveProgramId(null);
     setActiveSessionId(null);
+    setActiveWorkoutDay(null);
+    setActiveWorkoutStep(null);
+    setActiveRest(null);
     setSelectedProgramId(null);
     setScreen('splash');
     setStack([]);
@@ -138,13 +279,27 @@ function App() {
     go('detail');
   };
 
-  const startWorkout = async (programId) => {
-    const nextProgramId = programId || selectedProgramId || (window.PROGRAMS || [])[0]?.id || null;
+  const startWorkout = async (programId, programName = null, day = null) => {
+    const namedProgram = findProgramByName(programName);
+    const nextProgramId = programId || namedProgram?.id || selectedProgramId || (window.PROGRAMS || [])[0]?.id || null;
+    const nextDay = resolveWorkoutDay(nextProgramId, day);
+    const nextStep = nextStepForProgram(nextProgramId, null, { day: nextDay });
+    activeProgramIdRef.current = nextProgramId;
+    activeWorkoutDayRef.current = nextDay;
+    activeWorkoutStepRef.current = nextStep;
+    activeRestRef.current = null;
+    loadedToGlassesRef.current = true;
     setActiveProgramId(nextProgramId);
     setLoadedToGlasses(true);
+    setActiveWorkoutDay(nextDay);
+    setActiveWorkoutStep(nextStep);
+    setActiveRest(null);
+    setScreen('running');
+    setStack([]);
     if (window.startWorkout) {
       try {
         const sessionId = await window.startWorkout(nextProgramId);
+        activeSessionIdRef.current = sessionId;
         setActiveSessionId(sessionId);
       } catch (err) {
         console.error('Could not start workout:', err);
@@ -152,17 +307,46 @@ function App() {
     }
   };
 
-  const finishWorkout = async () => {
+  const finishWorkout = async (sessionIdOverride = null, programIdOverride = null) => {
+    const sessionIdToFinish = sessionIdOverride || activeSessionId;
+    const programIdToFinish = programIdOverride || activeProgramId;
+    loadedToGlassesRef.current = false;
+    activeWorkoutDayRef.current = null;
+    activeWorkoutStepRef.current = null;
+    activeRestRef.current = null;
     setLoadedToGlasses(false);
-    if (window.finishWorkout && activeSessionId) {
+    setActiveWorkoutDay(null);
+    setActiveWorkoutStep(null);
+    setActiveRest(null);
+    if (window.finishWorkout && sessionIdToFinish) {
       try {
-        await window.finishWorkout(activeSessionId, activeProgramId);
+        await window.finishWorkout(sessionIdToFinish, programIdToFinish);
       } catch (err) {
         console.error('Could not finish workout:', err);
       }
     }
+    activeSessionIdRef.current = null;
     setActiveSessionId(null);
     go('past');
+  };
+
+  const advanceWorkoutStep = () => {
+    const nextStep = nextStepForProgram(activeProgramIdRef.current, activeWorkoutStepRef.current, { day: activeWorkoutDayRef.current });
+    activeWorkoutStepRef.current = nextStep;
+    activeRestRef.current = null;
+    setActiveWorkoutStep(nextStep);
+    setActiveRest(null);
+  };
+
+  const skipWorkoutExercise = () => {
+    const nextStep = nextStepForProgram(activeProgramIdRef.current, activeWorkoutStepRef.current, {
+      nextExercise: true,
+      day: activeWorkoutDayRef.current,
+    });
+    activeWorkoutStepRef.current = nextStep;
+    activeRestRef.current = null;
+    setActiveWorkoutStep(nextStep);
+    setActiveRest(null);
   };
 
   React.useEffect(() => {
@@ -182,16 +366,28 @@ function App() {
       if (detail.type !== 'voiceCommand') return;
 
       if (window.askTrainARCoach && transcript) {
+        const clientTurnId = coachTurnIdRef.current + 1;
+        coachTurnIdRef.current = clientTurnId;
+        const currentProgramId = activeProgramIdRef.current;
+        const currentSessionId = activeSessionIdRef.current;
+        const currentDay = activeWorkoutDayRef.current;
+        const currentStep = activeWorkoutStepRef.current;
+        const currentRest = activeRestRef.current;
         window.askTrainARCoach(transcript, {
-          activeProgramId,
-          currentWorkout: loadedToGlasses ? {
-            programId: activeProgramId,
-            sessionId: activeSessionId,
-            title: (window.PROGRAMS || []).find((program) => program.id === activeProgramId)?.name,
+          activeProgramId: currentProgramId,
+          clientTurnId,
+          currentWorkout: loadedToGlassesRef.current ? {
+            programId: currentProgramId,
+            sessionId: currentSessionId,
+            title: (window.PROGRAMS || []).find((program) => program.id === currentProgramId)?.name,
+            day: currentDay,
+            step: currentStep,
+            rest: currentRest,
           } : null,
         }).catch((err) => {
           setCoachResponse({ response: err.message || 'Coach assistant failed.' });
         });
+        return;
       }
 
       if (transcript.includes('finish') || transcript.includes('end workout')) {
@@ -210,25 +406,200 @@ function App() {
       setWakeActive(false);
     };
 
+    const onCoachAction = async (event) => {
+      const clientTurnId = Number(event.detail?.clientTurnId || 0);
+      if (clientTurnId && clientTurnId < appliedCoachTurnIdRef.current) return;
+      if (clientTurnId) appliedCoachTurnIdRef.current = clientTurnId;
+      const patch = event.detail?.uiPatch;
+      if (!patch || !patch.type) return;
+
+      if (patch.type === 'program_created') {
+        const programId = patch.programId || null;
+        if (auth.user && window.loadTrainarData) {
+          try {
+            await window.loadTrainarData(auth.user.id);
+          } catch (err) {
+            console.error('Could not refresh TrainAR data:', err);
+          }
+        }
+        if (programId) {
+          const detail = window.getProgramDetail ? window.getProgramDetail(programId) : null;
+          setSelectedProgramId(programId);
+          setParsedProgram(detail || window.PROGRAM_DETAIL || null);
+          setStack((prev) => [...prev, 'home']);
+          setScreen('detail');
+        }
+        return;
+      }
+
+      if (patch.type === 'workout_started') {
+        const nextDay = patch.day || resolveWorkoutDay(patch.programId || activeProgramId, null);
+        const nextProgramId = patch.programId || activeProgramId;
+        const nextStep = patch.step || nextStepForProgram(nextProgramId, null, { day: nextDay });
+        activeProgramIdRef.current = nextProgramId;
+        activeSessionIdRef.current = patch.sessionId || null;
+        activeWorkoutDayRef.current = nextDay;
+        activeWorkoutStepRef.current = nextStep;
+        activeRestRef.current = null;
+        loadedToGlassesRef.current = true;
+        setActiveProgramId(nextProgramId);
+        setActiveSessionId(patch.sessionId || null);
+        setActiveWorkoutDay(nextDay);
+        setActiveWorkoutStep(nextStep);
+        setActiveRest(null);
+        setLoadedToGlasses(true);
+        setScreen('running');
+        setStack([]);
+        if (auth.user && window.loadTrainarData) {
+          window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
+        }
+        return;
+      }
+
+      if (patch.type === 'workout_finished') {
+        loadedToGlassesRef.current = false;
+        activeSessionIdRef.current = null;
+        activeWorkoutDayRef.current = null;
+        activeWorkoutStepRef.current = null;
+        activeRestRef.current = null;
+        setLoadedToGlasses(false);
+        setActiveSessionId(null);
+        setActiveWorkoutDay(null);
+        setActiveWorkoutStep(null);
+        setActiveRest(null);
+        if (auth.user && window.loadTrainarData) {
+          window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
+        }
+        go('past');
+        return;
+      }
+
+      if (patch.type === 'set_logged') {
+        if (Object.prototype.hasOwnProperty.call(patch, 'step')) {
+          activeWorkoutStepRef.current = patch.step || null;
+          activeRestRef.current = null;
+          setActiveWorkoutStep(patch.step || null);
+          setActiveRest(null);
+        }
+        if (auth.user && window.loadTrainarData) {
+          window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
+        }
+        return;
+      }
+
+      if (patch.type === 'start_workout') {
+        startWorkout(patch.programId || activeProgramId || null, patch.programName || null, patch.day || null);
+        return;
+      }
+
+      if (patch.type === 'finish_workout') {
+        finishWorkout(patch.sessionId, patch.programId);
+        return;
+      }
+
+      if (patch.type === 'log_set') {
+        const sessionIdToLog = patch.sessionId || activeSessionId;
+        if (!sessionIdToLog || !window.logWorkoutSet) return;
+        window.logWorkoutSet(sessionIdToLog, {
+          exerciseName: patch.exerciseName,
+          reps: patch.reps,
+          weight: patch.weight,
+        }).catch((err) => {
+          setCoachResponse({ response: err.message || 'Could not log that set.' });
+        });
+        return;
+      }
+
+      if (patch.type === 'exercise_started' || patch.type === 'workout_step_updated') {
+        activeWorkoutStepRef.current = patch.step || null;
+        activeRestRef.current = null;
+        setActiveWorkoutStep(patch.step || null);
+        setActiveRest(null);
+        if (patch.step) setScreen('running');
+        return;
+      }
+
+      if (patch.type === 'rest_started') {
+        const nextRest = {
+          durationSeconds: patch.durationSeconds || 90,
+          startedAt: new Date().toISOString(),
+        };
+        activeRestRef.current = nextRest;
+        if (patch.step) activeWorkoutStepRef.current = patch.step;
+        setActiveRest({
+          durationSeconds: nextRest.durationSeconds,
+          startedAt: nextRest.startedAt,
+        });
+        if (patch.step) setActiveWorkoutStep(patch.step);
+        return;
+      }
+
+      if (patch.type === 'start_rest') {
+        const nextRest = {
+          durationSeconds: patch.durationSeconds || activeWorkoutStepRef.current?.restSeconds || 90,
+          startedAt: new Date().toISOString(),
+        };
+        activeRestRef.current = nextRest;
+        setActiveRest({
+          durationSeconds: nextRest.durationSeconds,
+          startedAt: nextRest.startedAt,
+        });
+        return;
+      }
+
+      if (patch.type === 'start_exercise') {
+        const exerciseName = patch.exerciseName || activeWorkoutStepRef.current?.exerciseName;
+        const nextStep = {
+          ...(activeWorkoutStepRef.current || {}),
+          exerciseName,
+          setNumber: 1,
+          setCount: activeWorkoutStepRef.current?.setCount || 1,
+        };
+        activeWorkoutStepRef.current = nextStep;
+        activeRestRef.current = null;
+        setActiveWorkoutStep(nextStep);
+        setActiveRest(null);
+        setScreen('running');
+        return;
+      }
+
+      if (patch.type === 'advance_set') {
+        advanceWorkoutStep();
+        setActiveRest(null);
+        return;
+      }
+
+      if (patch.type === 'skip_exercise' || patch.type === 'finish_exercise') {
+        skipWorkoutExercise();
+        setScreen('running');
+      }
+    };
+
     window.addEventListener('trainar:glasses-state', onGlassesState);
     window.addEventListener('trainar:glasses', onGlassesEvent);
     window.addEventListener('trainar:coach-response', onCoachResponse);
+    window.addEventListener('trainar:coach-action', onCoachAction);
     return () => {
       window.removeEventListener('trainar:glasses-state', onGlassesState);
       window.removeEventListener('trainar:glasses', onGlassesEvent);
       window.removeEventListener('trainar:coach-response', onCoachResponse);
+      window.removeEventListener('trainar:coach-action', onCoachAction);
     };
-  }, [activeProgramId, selectedProgramId, activeSessionId, loadedToGlasses]);
+  }, [activeProgramId, selectedProgramId, activeSessionId, activeWorkoutDay, activeWorkoutStep, activeRest, loadedToGlasses]);
 
   const openWorkout = async (sessionId) => {
+    let workout = null;
     if (window.selectPastWorkout) {
       try {
-        await window.selectPastWorkout(sessionId);
+        workout = await window.selectPastWorkout(sessionId);
       } catch (err) {
         console.error('Could not load workout detail:', err);
       }
     }
-    go('past');
+    if (workout) {
+      setSelectedPastWorkout(workout);
+      go('past');
+    }
   };
 
   const screens = {
@@ -271,7 +642,10 @@ function App() {
         loadedToGlasses={loadedToGlasses}
         activeProgramId={activeProgramId}
         onAddProgram={() => go('add')}
-        onOpenProgram={openProgram}
+        onOpenProgram={(programId) => {
+          if (loadedToGlasses) setScreen('running');
+          else openProgram(programId || activeProgramId || selectedProgramId || (window.PROGRAMS || [])[0]?.id || null);
+        }}
         // Quick-start from the round green glasses button stays on home —
         // the screen re-renders into the active hero card.
         onActivate={startWorkout}
@@ -284,6 +658,21 @@ function App() {
         key={`profile-${dataVersion}-${glassesState.connected ? 'connected' : 'idle'}`}
         user={auth.user}
         glassesState={glassesState}
+      />
+    ),
+
+    running: (
+      <RunningWorkoutScreen
+        key={`running-${dataVersion}-${activeProgramId || 'none'}-${activeWorkoutStep?.exerciseName || 'none'}-${activeWorkoutStep?.setNumber || 1}`}
+        programId={activeProgramId}
+        sessionId={activeSessionId}
+        day={activeWorkoutDay}
+        step={activeWorkoutStep}
+        rest={activeRest}
+        onClose={() => switchTab('home')}
+        onFinish={finishWorkout}
+        onNextSet={advanceWorkoutStep}
+        onSkipExercise={skipWorkoutExercise}
       />
     ),
 
@@ -370,7 +759,7 @@ function App() {
         }}
       />
     ),
-    past: <PastWorkoutScreen key={`past-${dataVersion}`} onBack={back} />,
+    past: <PastWorkoutScreen key={`past-${selectedPastWorkout?.id || dataVersion}`} workout={selectedPastWorkout || window.PAST_WORKOUT} onBack={back} />,
   };
 
   const showTabBar = SCREENS_WITH_TABBAR.includes(screen);
