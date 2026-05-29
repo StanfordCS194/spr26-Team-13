@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 import json
 import os
+import re
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -24,6 +25,7 @@ from src.assistant.coach_style import style_prompt_from_context
 from src.assistant.evidence import format_evidence_context, retrieve_evidence
 from src.assistant.models import AssistantAction
 from src.assistant.tools import normalize_exercise_name
+from src.shared.exercise_guidance import coaching_cue_for
 
 
 DEFAULT_SUPABASE_URL = "https://rcmlbgjqwpfzpiownxfy.supabase.co"
@@ -1058,7 +1060,7 @@ def _advance_set(
 
     return {
         "ok": True,
-        "message": _format_step_message(step),
+        "message": _format_step_message(step, include_coaching_cue=True),
         "action_result": step,
         "ui_patch": {
             "type": "workout_step_updated",
@@ -1808,16 +1810,46 @@ def _step_from_exercise(
         "repTarget": exercise.get("rep_target") if exercise else None,
         "loadTarget": exercise.get("load_target") if exercise else None,
         "restSeconds": exercise.get("rest_seconds") if exercise else None,
+        "notes": exercise.get("notes") if exercise else None,
     }
 
 
-def _format_step_message(step: dict[str, Any]) -> str:
+def _format_prescription(rep_target: Any, load_target: Any) -> str:
+    """Spoken prescription fragment from freeform rep/load targets. Both optional."""
+    reps = str(rep_target).strip() if rep_target not in (None, "") else ""
+    load = str(load_target).strip() if load_target not in (None, "") else ""
+    fragments: list[str] = []
+    if reps:
+        if re.fullmatch(r"\d+(\s*[-–]\s*\d+)?", reps):
+            fragments.append(f"{reps} reps")
+        else:
+            fragments.append(reps)
+    if load:
+        spoken = "bodyweight" if load.lower() in {"bw", "bodyweight"} else load
+        fragments.append(f"at {spoken}")
+    return " ".join(fragments)
+
+
+def _format_step_message(step: dict[str, Any], include_coaching_cue: bool = False) -> str:
     exercise = step.get("exerciseName") or "the next exercise"
     set_number = step.get("setNumber")
     set_count = step.get("setCount")
+
     if set_number and set_count:
-        return f"Next up is {exercise}, set {set_number} of {set_count}."
-    return f"Next up is {exercise}."
+        base = f"Next up is {exercise}, set {set_number} of {set_count}"
+    else:
+        base = f"Next up is {exercise}"
+
+    if not include_coaching_cue:
+        return base + "."
+
+    prescription = _format_prescription(step.get("repTarget"), step.get("loadTarget"))
+    if prescription:
+        base = f"{base}, {prescription}"
+    base += "."
+
+    cue = coaching_cue_for(step.get("exerciseName"), step.get("notes"))
+    return f"{base} {cue}" if cue else base
 
 
 def _current_step(context: dict[str, Any] | None) -> dict[str, Any] | None:
