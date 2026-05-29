@@ -1,10 +1,10 @@
 import SwiftUI
 import WebKit
 
-struct TrainARWebView: UIViewRepresentable {
-    @ObservedObject var bridge: MockGlassesBridge
+struct TrainARWebView<B: GlassesBridge>: UIViewRepresentable {
+    @ObservedObject var bridge: B
 
-    func makeCoordinator() -> Coordinator {
+    func makeCoordinator() -> Coordinator<B> {
         Coordinator(bridge: bridge)
     }
 
@@ -15,7 +15,15 @@ struct TrainARWebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsBackForwardNavigationGestures = false
+        webView.scrollView.delegate = context.coordinator
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
         context.coordinator.attach(webView)
 
         webView.load(URLRequest(url: Self.webURL))
@@ -34,30 +42,44 @@ extension TrainARWebView {
         return URL(string: raw?.isEmpty == false ? raw! : "http://127.0.0.1:5002/ios/")!
     }
 
-    static let bootstrapScript = WKUserScript(
-        source: """
-        window.TRAINAR_NATIVE_APP = true;
-        document.documentElement.classList.add('trainar-native');
-        window.TrainARNative = {
-          postMessage: function(type, payload) {
-            if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.trainarNative) {
-              return;
-            }
-            window.webkit.messageHandlers.trainarNative.postMessage({ type: type, payload: payload || {} });
-          }
-        };
-        """,
-        injectionTime: .atDocumentStart,
-        forMainFrameOnly: true
-    )
+    static var bootstrapScript: WKUserScript {
+        WKUserScript(
+            source: """
+            window.TRAINAR_NATIVE_APP = true;
+            document.documentElement.classList.add('trainar-native');
+            window.TrainARNative = {
+              postMessage: function(type, payload) {
+                if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.trainarNative) {
+                  return;
+                }
+                window.webkit.messageHandlers.trainarNative.postMessage({ type: type, payload: payload || {} });
+              }
+            };
+            window.sendTrainARNativeCommand = function(type, payload) {
+              window.TrainARNative.postMessage(type, payload);
+              return true;
+            };
+            // Forward in-page trainar:speak events to the native bridge so the
+            // coach response gets spoken via AVSpeechSynthesizer.
+            window.addEventListener('trainar:speak', function(event) {
+              var detail = event.detail || {};
+              var text = detail.text || '';
+              if (!text) return;
+              window.TrainARNative.postMessage('speakResponse', { text: text });
+            });
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+    }
 }
 
-final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-    private let bridge: MockGlassesBridge
+final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
+    private let bridge: B
     private weak var webView: WKWebView?
     private var eventTask: Task<Void, Never>?
 
-    init(bridge: MockGlassesBridge) {
+    init(bridge: B) {
         self.bridge = bridge
         super.init()
         startForwardingEvents()
@@ -79,6 +101,10 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         bridge.replayState()
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        nil
     }
 
     private func startForwardingEvents() {

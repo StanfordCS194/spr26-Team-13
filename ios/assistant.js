@@ -1,9 +1,8 @@
 // Glasses coach adapter.
 //
-// Supabase data is already loaded into window.* by data.js under the signed-in
-// user's RLS-protected session. This adapter packages that state as context for
-// the local assistant endpoint so coach responses can refer to saved programs,
-// workout history, PRs, and device state.
+// Posts the user's spoken transcript and app context to /api/chat. The backend
+// can now either answer conversationally or run one of the supported workout
+// actions, while this adapter keeps the UI listening for the same response event.
 (function () {
   async function askTrainARCoach(message, options = {}) {
     const cleanMessage = String(message || '').trim();
@@ -11,12 +10,14 @@
       throw new Error('Message is required.');
     }
 
-    const response = await fetch('/api/assistant/chat', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: cleanMessage,
+        text: cleanMessage,
+        session_id: getCoachSessionId(options),
         context: buildCoachContext(options),
+        auth: await getSupabaseAuthPayload(),
       }),
     });
 
@@ -25,17 +26,45 @@
       throw new Error(payload.error || 'Coach assistant failed.');
     }
 
+    // Normalize on `response` so existing listeners (CoachOverlay, wake-word
+    // border reset) keep working unchanged.
+    const reply = String(payload.reply || '').trim();
+    const normalized = {
+      response: reply,
+      action: payload.action || null,
+      actionResult: payload.action_result || null,
+      uiPatch: payload.ui_patch || null,
+      mode: payload.mode || 'chat',
+      clientTurnId: options.clientTurnId || null,
+    };
+
+    if (normalized.uiPatch) {
+      window.dispatchEvent(new CustomEvent('trainar:coach-action', {
+        detail: normalized,
+      }));
+    }
+
     window.dispatchEvent(new CustomEvent('trainar:coach-response', {
-      detail: payload,
+      detail: normalized,
     }));
+
+    // Speak the reply through whatever audio route the native shell is on
+    // (phone speaker, AirPods, Ray-Ban Meta, …). The WebView bootstrap
+    // forwards this CustomEvent to a `speakResponse` postMessage, which
+    // AppleVoiceBridge handles with AVSpeechSynthesizer.
+    if (reply) {
+      window.dispatchEvent(new CustomEvent('trainar:speak', {
+        detail: { text: reply },
+      }));
+    }
 
     if (window.sendTrainARNativeCommand) {
       window.sendTrainARNativeCommand('coachResponse', {
-        response: payload.response || '',
+        response: reply,
       });
     }
 
-    return payload;
+    return normalized;
   }
 
   function buildCoachContext(options = {}) {
@@ -53,6 +82,34 @@
       devices: window.TRAINAR_DEVICES || [],
       glasses: window.TRAINAR_GLASSES_STATE || {},
     };
+  }
+
+  function getCoachSessionId(options = {}) {
+    if (options.currentWorkout?.sessionId) return `workout:${options.currentWorkout.sessionId}`;
+    if (options.activeProgramId) return `program:${options.activeProgramId}`;
+
+    const storageKey = 'trainar.coachSessionId';
+    try {
+      const existing = window.localStorage && window.localStorage.getItem(storageKey);
+      if (existing) return existing;
+
+      const created = `browser:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      if (window.localStorage) window.localStorage.setItem(storageKey, created);
+      return created;
+    } catch (_err) {
+      return 'browser:ephemeral';
+    }
+  }
+
+  async function getSupabaseAuthPayload() {
+    if (!window.trainarSupabase?.auth?.getSession) return null;
+    try {
+      const { data } = await window.trainarSupabase.auth.getSession();
+      const token = data?.session?.access_token;
+      return token ? { access_token: token } : null;
+    } catch (_err) {
+      return null;
+    }
   }
 
   function getActiveProgram(activeProgramId) {
@@ -81,4 +138,3 @@
     buildTrainARCoachContext: buildCoachContext,
   });
 })();
-

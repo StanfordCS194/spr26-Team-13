@@ -216,4 +216,125 @@ const HomeScreen = ({
   );
 };
 
-Object.assign(window, { HomeScreen });
+const RunningWorkoutScreen = ({
+  programId,
+  sessionId,
+  day,
+  step,
+  rest,
+  onClose,
+  onFinish,
+  onNextSet,
+  onSkipExercise,
+}) => {
+  const program = (window.PROGRAMS || []).find((item) => item.id === programId) || (window.PROGRAMS || [])[0] || {};
+  const detail = programId && window.getProgramDetail
+    ? (window.getProgramDetail(programId) || window.PROGRAM_DETAIL || { exercises: [] })
+    : (window.PROGRAM_DETAIL || { exercises: [] });
+  const selectedDay = day?.id
+    ? (detail.days || []).find((item) => item.id === day.id) || day
+    : (day || (detail.days || [])[0] || null);
+  const exercises = selectedDay?.blocks?.length
+    ? selectedDay.blocks.flatMap((block) => block.exercises || [])
+    : (detail.exercises || []);
+  const currentName = step?.exerciseName || exercises[0]?.name || 'Workout';
+  const currentIndex = Math.max(0, exercises.findIndex((exercise) => normalizeRunningName(exercise.name) === normalizeRunningName(currentName)));
+  const setNumber = step?.setNumber || 1;
+  const setCount = step?.setCount || Number.parseInt(exercises[currentIndex]?.sets, 10) || 1;
+
+  return (
+    <Screen padTop={58} padBottom={24} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{
+        padding: '0 20px 16px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexShrink: 0,
+      }}>
+        <button onClick={onClose} className="press" style={{
+          width: 38, height: 38, borderRadius: 9999,
+          background: 'var(--surface-1)', border: '1px solid var(--hairline)',
+          color: 'var(--text-1)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon name="chevron-down" size={18} />
+        </button>
+        <Pill accent>Live workout</Pill>
+      </div>
+
+      <div style={{ padding: '0 20px 18px', flexShrink: 0 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>
+          {program.name || 'Workout'}{selectedDay?.title ? ` - ${selectedDay.title}` : ''}
+        </div>
+        <h1 style={{ fontSize: 34, lineHeight: 1.02, fontWeight: 650, letterSpacing: -0.7, margin: 0 }}>
+          {currentName}
+        </h1>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          <Pill>Set {setNumber} of {setCount}</Pill>
+          {step?.repTarget && <Pill>{step.repTarget} reps</Pill>}
+          {step?.loadTarget && <Pill>{step.loadTarget}</Pill>}
+          {(rest?.durationSeconds || step?.restSeconds) && (
+            <Pill>{rest ? 'Rest active' : `${step.restSeconds}s rest`}</Pill>
+          )}
+        </div>
+      </div>
+
+      <div style={{
+        padding: '0 20px 16px',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+        flexShrink: 0,
+      }}>
+        <Button size="md" icon="arrow-right" onClick={onNextSet}>Next set</Button>
+        <Button size="md" variant="surface" icon="chevron-right" onClick={onSkipExercise}>Skip exercise</Button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 18px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {exercises.map((exercise, index) => {
+            const active = index === currentIndex;
+            const done = currentIndex > -1 && index < currentIndex;
+            return (
+              <div key={`${exercise.id || exercise.name}-${index}`} style={{
+                minHeight: 64,
+                padding: '12px 14px',
+                borderRadius: 'var(--r-card)',
+                background: active ? 'var(--accent-soft)' : 'var(--surface-1)',
+                border: active ? '1px solid rgba(197,242,62,0.45)' : '1px solid var(--hairline)',
+                color: active ? 'var(--text-1)' : 'var(--text-2)',
+                display: 'flex', alignItems: 'center', gap: 12,
+                opacity: done ? 0.62 : 1,
+              }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: 9999,
+                  background: active ? 'var(--accent)' : 'var(--surface-2)',
+                  color: active ? 'var(--on-accent)' : 'var(--text-3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {done ? <Icon name="check" size={14} stroke={active ? 'var(--on-accent)' : 'var(--text-3)'} /> : index + 1}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: active ? 700 : 600, color: active ? 'var(--text-1)' : 'var(--text-2)' }}>
+                    {exercise.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: active ? 'var(--accent)' : 'var(--text-3)', marginTop: 3 }}>
+                    {exercise.sets || '-'} sets · {exercise.reps || '-'} reps · {exercise.load || '-'}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 20px', flexShrink: 0 }}>
+        <Button variant="surface" icon="check" onClick={() => onFinish && onFinish(sessionId, programId)}>
+          Finish workout
+        </Button>
+      </div>
+    </Screen>
+  );
+};
+
+function normalizeRunningName(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+Object.assign(window, { HomeScreen, RunningWorkoutScreen });

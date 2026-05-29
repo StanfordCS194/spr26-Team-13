@@ -288,9 +288,20 @@ def test_assistant_chat_api_returns_response(monkeypatch):
         "action": {
             "action": "get_pr",
             "exercise_name": "back squat",
+            "program_name": None,
+            "day_name": None,
+            "day_number": None,
+            "week_number": None,
             "weight": None,
             "reps": None,
             "duration_seconds": None,
+            "date_range": None,
+            "history_metric": None,
+            "min_weight": None,
+            "max_weight": None,
+            "min_reps": None,
+            "max_reps": None,
+            "workout_query_type": None,
         },
     }
 
@@ -303,6 +314,300 @@ def test_assistant_chat_api_requires_message():
 
     assert response.status_code == 400
     assert response.get_json() == {"error": "Message is required."}
+
+
+def test_glasses_chat_route_uses_action_path_for_supported_commands(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "What's my bench PR?",
+            "session_id": "test-session",
+            "context": {
+                "personalRecords": [
+                    {
+                        "exercise_name": "Bench Press",
+                        "value": 245,
+                        "unit": "lb",
+                    }
+                ]
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["mode"] == "action"
+    assert payload["reply"] == "Your Bench Press PR is 245 lb."
+    assert payload["action"]["action"] == "get_pr"
+    assert payload["ui_patch"] is None
+
+
+def test_glasses_chat_route_returns_ui_patch_for_log_set(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "Log a set of bench press for 8 reps at 185 pounds",
+            "session_id": "workout:test-session",
+            "context": {
+                "activeProgramId": "program-1",
+                "currentWorkout": {
+                    "sessionId": "session-1",
+                    "title": "Bench Day",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["mode"] == "action"
+    assert payload["action"]["action"] == "log_set"
+    assert payload["ui_patch"] == {
+        "type": "log_set",
+        "sessionId": "session-1",
+        "exerciseName": "bench press",
+        "reps": 8,
+        "weight": 185.0,
+    }
+
+
+def test_glasses_chat_route_executes_supabase_action_with_user_token(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+    captured = {}
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    def fake_execute(action, *, context, access_token):
+        captured["action"] = action
+        captured["context"] = context
+        captured["access_token"] = access_token
+        return {
+            "ok": True,
+            "message": "Logged 8 reps of bench press at 185 pounds.",
+            "action_result": {"set": {"id": "set-1"}},
+            "ui_patch": {
+                "type": "set_logged",
+                "sessionId": "session-1",
+                "exerciseName": "bench press",
+                "setNumber": 1,
+            },
+        }
+
+    monkeypatch.setattr("src.assistant.chat_route.execute_supabase_action", fake_execute)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "Log a set of bench press for 8 reps at 185 pounds",
+            "session_id": "workout:test-session",
+            "auth": {"access_token": "user-jwt"},
+            "context": {
+                "currentWorkout": {
+                    "sessionId": "session-1",
+                    "title": "Bench Day",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reply"] == "Logged 8 reps of bench press at 185 pounds."
+    assert payload["action_result"] == {"set": {"id": "set-1"}}
+    assert payload["ui_patch"]["type"] == "set_logged"
+    assert captured["access_token"] == "user-jwt"
+    assert captured["action"].action == "log_set"
+    assert captured["context"]["currentWorkout"]["sessionId"] == "session-1"
+
+
+def test_glasses_chat_route_executes_supabase_history_search(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+    captured = {}
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    def fake_execute(action, *, context, access_token):
+        captured["action"] = action
+        captured["access_token"] = access_token
+        return {
+            "ok": True,
+            "message": "Last time I see bench press was May 20: 8 reps at 185 lb.",
+            "action_result": {"sets": [{"reps": 8, "load_value": 185}]},
+            "ui_patch": None,
+        }
+
+    monkeypatch.setattr("src.assistant.chat_route.execute_supabase_action", fake_execute)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "What did I do on bench last week?",
+            "auth": {"access_token": "user-jwt"},
+            "context": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["mode"] == "action"
+    assert payload["action"]["action"] == "search_history"
+    assert payload["action"]["date_range"] == "last_week"
+    assert payload["reply"] == "Last time I see bench press was May 20: 8 reps at 185 lb."
+    assert captured["access_token"] == "user-jwt"
+
+
+def test_glasses_chat_route_executes_supabase_start_exercise(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+    captured = {}
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    def fake_execute(action, *, context, access_token):
+        captured["action"] = action
+        captured["context"] = context
+        captured["access_token"] = access_token
+        return {
+            "ok": True,
+            "message": "Starting bench press.",
+            "action_result": {"exercise_log": {"id": "log-1"}},
+            "ui_patch": {
+                "type": "exercise_started",
+                "sessionId": "session-1",
+                "exerciseName": "bench press",
+                "exerciseLogId": "log-1",
+                "step": {"exerciseName": "bench press", "setNumber": 1, "setCount": 3},
+            },
+        }
+
+    monkeypatch.setattr("src.assistant.chat_route.execute_supabase_action", fake_execute)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "Start bench press",
+            "auth": {"access_token": "user-jwt"},
+            "context": {
+                "currentWorkout": {
+                    "sessionId": "session-1",
+                    "title": "Bench Day",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reply"] == "Starting bench press."
+    assert payload["ui_patch"]["type"] == "exercise_started"
+    assert captured["action"].action == "start_exercise"
+    assert captured["access_token"] == "user-jwt"
+
+
+def test_glasses_chat_route_executes_supabase_advance_set(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+    captured = {}
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    def fake_execute(action, *, context, access_token):
+        captured["action"] = action
+        captured["context"] = context
+        captured["access_token"] = access_token
+        return {
+            "ok": True,
+            "message": "Next up is bench press, set 2 of 3.",
+            "action_result": {"exerciseName": "bench press", "setNumber": 2, "setCount": 3},
+            "ui_patch": {
+                "type": "workout_step_updated",
+                "sessionId": "session-1",
+                "step": {"exerciseName": "bench press", "setNumber": 2, "setCount": 3},
+            },
+        }
+
+    monkeypatch.setattr("src.assistant.chat_route.execute_supabase_action", fake_execute)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "Next set",
+            "auth": {"access_token": "user-jwt"},
+            "context": {
+                "currentWorkout": {
+                    "sessionId": "session-1",
+                    "title": "Bench Day",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["reply"] == "Next up is bench press, set 2 of 3."
+    assert payload["action"]["action"] == "advance_set"
+    assert payload["ui_patch"]["type"] == "workout_step_updated"
+    assert captured["access_token"] == "user-jwt"
+
+
+def test_glasses_chat_route_uses_contextual_llm_for_general_questions(monkeypatch):
+    captured = {}
+
+    class FakeMessage:
+        content = "Keep the squat warmup short and start with the empty bar."
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return type("FakeCompletion", (), {"choices": [FakeChoice()]})()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+    monkeypatch.setattr("src.assistant.chat_route.build_openai_client", lambda: FakeClient())
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "text": "What warmup should I do?",
+            "session_id": "chat-test-session",
+            "context": {
+                "activeProgram": {
+                    "name": "Powerbuilding",
+                    "exercises": [{"name": "Back Squat"}],
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["mode"] == "chat"
+    assert payload["reply"] == "Keep the squat warmup short and start with the empty bar."
+    assert "Powerbuilding" in captured["messages"][0]["content"]
+    assert "Back Squat" in captured["messages"][0]["content"]
 
 
 def test_program_review_demo_shows_unassigned_exercises_when_blocks_exist(monkeypatch):

@@ -4,6 +4,7 @@
 
 (function () {
   const client = () => window.trainarSupabase;
+  const APP_TIME_ZONE = 'America/Los_Angeles';
 
   window.PROGRAMS = [];
   window.PROGRAM_DETAIL = { exercises: [], days: [] };
@@ -363,6 +364,95 @@
     return session;
   }
 
+  async function logWorkoutSet(sessionId, { exerciseName, reps, weight, rpe = null } = {}) {
+    if (!sessionId) throw new Error('Start a workout before logging sets.');
+    const cleanExerciseName = String(exerciseName || '').trim();
+    const parsedReps = Number.parseInt(reps, 10);
+    const parsedWeight = weight == null ? null : Number.parseFloat(weight);
+
+    if (!cleanExerciseName || !Number.isFinite(parsedReps)) {
+      throw new Error('To log a set, I need the exercise and reps.');
+    }
+
+    const { data: authData, error: authError } = await client().auth.getUser();
+    throwIfError(authError);
+    if (!authData.user) throw new Error('Sign in before logging sets.');
+
+    const logsRes = await client()
+      .from('workout_exercise_logs')
+      .select('id,exercise_number,exercise_name')
+      .eq('session_id', sessionId)
+      .order('exercise_number');
+    throwIfError(logsRes.error);
+
+    const logs = logsRes.data || [];
+    let log = logs.find((item) => normalizeName(item.exercise_name) === normalizeName(cleanExerciseName));
+    if (!log) {
+      const nextExerciseNumber = logs.reduce((max, item) => Math.max(max, Number(item.exercise_number || 0)), 0) + 1;
+      const insertedLog = await client()
+        .from('workout_exercise_logs')
+        .insert({
+          session_id: sessionId,
+          exercise_number: nextExerciseNumber,
+          exercise_name: cleanExerciseName,
+        })
+        .select('id,exercise_number,exercise_name')
+        .single();
+      throwIfError(insertedLog.error);
+      log = insertedLog.data;
+    }
+
+    const setsRes = await client()
+      .from('workout_sets')
+      .select('set_number')
+      .eq('exercise_log_id', log.id)
+      .order('set_number');
+    throwIfError(setsRes.error);
+    const nextSetNumber = (setsRes.data || []).reduce((max, item) => Math.max(max, Number(item.set_number || 0)), 0) + 1;
+
+    const insertedSet = await client()
+      .from('workout_sets')
+      .insert({
+        exercise_log_id: log.id,
+        set_number: nextSetNumber,
+        reps: parsedReps,
+        load_value: Number.isFinite(parsedWeight) ? parsedWeight : null,
+        load_unit: Number.isFinite(parsedWeight) ? 'lb' : 'other',
+        rpe: rpe == null ? null : Number.parseFloat(rpe),
+        status: 'manual',
+        completed_at: new Date().toISOString(),
+      })
+      .select('id,exercise_log_id,set_number,reps,load_value,load_unit,rpe,status,completed_at')
+      .single();
+    throwIfError(insertedSet.error);
+
+    const sessionRes = await client()
+      .from('workout_sessions')
+      .select('total_sets,total_volume')
+      .eq('id', sessionId)
+      .single();
+    throwIfError(sessionRes.error);
+
+    const addedVolume = Number.isFinite(parsedWeight) ? parsedReps * parsedWeight : 0;
+    const updatedSession = await client()
+      .from('workout_sessions')
+      .update({
+        total_sets: Number(sessionRes.data?.total_sets || 0) + 1,
+        total_volume: Number(sessionRes.data?.total_volume || 0) + addedVolume,
+      })
+      .eq('id', sessionId)
+      .select('id,total_sets,total_volume')
+      .single();
+    throwIfError(updatedSession.error);
+
+    await loadTrainarData(authData.user.id);
+    return {
+      exerciseLog: log,
+      set: insertedSet.data,
+      session: updatedSession.data,
+    };
+  }
+
   async function loadPastWorkout(session, prs) {
     const logsRes = await client()
       .from('workout_exercise_logs')
@@ -408,8 +498,10 @@
   }
 
   async function selectPastWorkout(sessionId) {
-    const session = (window.TRAINAR_SESSIONS || []).find((item) => item.id === sessionId)
-      || getHighlightedPastSession(window.TRAINAR_SESSIONS || []);
+    const sessions = window.TRAINAR_SESSIONS || [];
+    const session = sessionId
+      ? sessions.find((item) => item.id === sessionId)
+      : getHighlightedPastSession(sessions);
     if (!session) return null;
     window.PAST_WORKOUT = await loadPastWorkout(session, window.TRAINAR_PRS || []);
     emitDataChange();
@@ -476,10 +568,10 @@
 
   function buildActivity(sessions) {
     const days = Array.from({ length: 84 }, () => 0);
-    const today = new Date();
+    const today = startOfAppDay(new Date().toISOString());
     sessions.forEach((session) => {
-      const date = new Date(session.started_at || session.created_at);
-      const diff = Math.floor((startOfDay(today) - startOfDay(date)) / 86400000);
+      const date = startOfAppDay(session.started_at || session.created_at);
+      const diff = Math.floor((today - date) / 86400000);
       if (diff >= 0 && diff < 84) {
         const volume = Number(session.total_volume || 0);
         days[83 - diff] = volume > 20000 ? 3 : session.total_sets > 12 ? 2 : 1;
@@ -489,14 +581,14 @@
   }
 
   function buildMonthActivity(sessions, year, monthIndex) {
-    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
     const days = Array.from({ length: daysInMonth }, () => 0);
     sessions.forEach((session) => {
-      const date = new Date(session.started_at || session.created_at);
-      if (date.getFullYear() !== year || date.getMonth() !== monthIndex) return;
+      const date = sessionDateParts(session.started_at || session.created_at);
+      if (!date || date.year !== year || date.monthIndex !== monthIndex) return;
       const volume = Number(session.total_volume || 0);
-      days[date.getDate() - 1] = Math.max(
-        days[date.getDate() - 1],
+      days[date.day - 1] = Math.max(
+        days[date.day - 1],
         volume > 20000 ? 3 : session.total_sets > 12 ? 2 : 1,
       );
     });
@@ -505,10 +597,10 @@
 
   function buildMonthSessionIds(sessions, year, monthIndex) {
     return sessions.reduce((ids, session) => {
-      const date = new Date(session.started_at || session.created_at);
-      if (date.getFullYear() !== year || date.getMonth() !== monthIndex) return ids;
-      const day = date.getDate();
-      if (!ids[day] || new Date(session.started_at || session.created_at) > new Date(ids[day].started_at || ids[day].created_at)) {
+      const date = sessionDateParts(session.started_at || session.created_at);
+      if (!date || date.year !== year || date.monthIndex !== monthIndex) return ids;
+      const day = date.day;
+      if (!ids[day] || date.sortKey > sessionDateParts(ids[day].started_at || ids[day].created_at)?.sortKey) {
         ids[day] = session;
       }
       return ids;
@@ -517,8 +609,8 @@
 
   function buildMonthStats(sessions, year, monthIndex) {
     const monthSessions = sessions.filter((session) => {
-      const date = new Date(session.started_at || session.created_at);
-      return date.getFullYear() === year && date.getMonth() === monthIndex;
+      const date = sessionDateParts(session.started_at || session.created_at);
+      return date && date.year === year && date.monthIndex === monthIndex;
     });
     const totalVolume = monthSessions.reduce((sum, session) => sum + Number(session.total_volume || 0), 0);
     const rpeSessions = monthSessions.filter((session) => Number(session.avg_rpe || 0) > 0);
@@ -536,7 +628,7 @@
 
   function longestMonthlyStreak(sessions) {
     const activeDays = new Set(sessions.map((session) =>
-      new Date(session.started_at || session.created_at).getDate(),
+      sessionDateParts(session.started_at || session.created_at)?.day,
     ));
     let best = 0;
     let current = 0;
@@ -558,6 +650,10 @@
       groups[value].push(item);
       return groups;
     }, {});
+  }
+
+  function normalizeName(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
   function getDetailDays(detail) {
@@ -598,18 +694,17 @@
 
   function shortDate(value) {
     if (!value) return 'Today';
-    return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit' }).format(new Date(value));
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: '2-digit', timeZone: APP_TIME_ZONE }).format(new Date(value));
   }
 
   function dayName(value) {
     if (!value) return '';
-    return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date(value));
+    return new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: APP_TIME_ZONE }).format(new Date(value));
   }
 
   function formatSessionDate(value) {
     if (!value) return '';
-    const date = new Date(value);
-    return `${dayName(value)} - ${shortDate(date)}`;
+    return `${dayName(value)} - ${shortDate(value)}`;
   }
 
   function formatDuration(seconds) {
@@ -623,10 +718,29 @@
     return `${Math.round(volume).toLocaleString()} lbs`;
   }
 
-  function startOfDay(value) {
+  function startOfAppDay(value) {
+    const parts = sessionDateParts(value);
+    return parts ? Date.UTC(parts.year, parts.monthIndex, parts.day) : 0;
+  }
+
+  function sessionDateParts(value) {
+    if (!value) return null;
     const date = new Date(value);
-    date.setHours(0, 0, 0, 0);
-    return date;
+    if (Number.isNaN(date.getTime())) return null;
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: APP_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(date).map((part) => [part.type, part.value]),
+    );
+    return {
+      year: Number(parts.year),
+      monthIndex: Number(parts.month) - 1,
+      day: Number(parts.day),
+      sortKey: date.toISOString(),
+    };
   }
 
   function throwIfError(error) {
@@ -641,6 +755,7 @@
     pairDemoDevice,
     startWorkout,
     finishWorkout,
+    logWorkoutSet,
     selectPastWorkout,
     getProgramDetail,
   });
