@@ -65,7 +65,10 @@ extension TrainARWebView {
               var detail = event.detail || {};
               var text = detail.text || '';
               if (!text) return;
-              window.TrainARNative.postMessage('speakResponse', { text: text });
+              window.TrainARNative.postMessage('speakResponse', {
+                text: text,
+                continueListening: Boolean(detail.continueListening)
+              });
             });
             """,
             injectionTime: .atDocumentStart,

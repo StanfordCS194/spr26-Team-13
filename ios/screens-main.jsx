@@ -221,8 +221,10 @@ const RunningWorkoutScreen = ({
   sessionId,
   day,
   step,
+  lastLoggedSet,
   rest,
   onClose,
+  onOpenHud,
   onFinish,
   onNextSet,
   onSkipExercise,
@@ -283,6 +285,43 @@ const RunningWorkoutScreen = ({
       }}>
         <Button size="md" icon="arrow-right" onClick={onNextSet}>Next set</Button>
         <Button size="md" variant="surface" icon="chevron-right" onClick={onSkipExercise}>Skip exercise</Button>
+      </div>
+
+      {lastLoggedSet && (
+        <div style={{ padding: '0 20px 16px', flexShrink: 0 }}>
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: 'var(--r-card)',
+            background: 'var(--surface-1)',
+            border: '1px solid rgba(197,242,62,0.32)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 9999,
+              background: 'var(--accent)',
+              color: 'var(--on-accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Icon name="check" size={14} stroke="var(--on-accent)" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 2 }}>Last logged set</div>
+              <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-1)' }}>
+                {lastLoggedSet.exerciseName || currentName}: {lastLoggedSet.reps ?? '-'} reps
+                {lastLoggedSet.weight != null ? ` at ${lastLoggedSet.weight} lb` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: '0 20px 16px', flexShrink: 0 }}>
+        <Button size="md" variant="dark" icon="video" onClick={onOpenHud}>
+          HUD demo
+        </Button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 18px' }}>

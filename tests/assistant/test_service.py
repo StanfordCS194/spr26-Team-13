@@ -3,6 +3,7 @@ from src.assistant.models import AssistantAction
 from src.assistant.supabase_tools import (
     _advance_from_current_step,
     _get_rep_record,
+    _log_set,
     _query_history,
     _query_workout,
     _resolve_program_day,
@@ -325,3 +326,165 @@ def test_skip_exercise_moves_to_next_program_exercise():
 
     assert result["ok"] is True
     assert result["ui_patch"]["step"]["exerciseName"] == "Lat Pulldown"
+
+
+def test_log_set_uses_planned_exercise_name_for_similar_request():
+    class FakeClient:
+        def __init__(self):
+            self.inserted_logs = []
+            self.inserted_sets = []
+
+        def select(self, table, params):
+            if table == "program_days":
+                return [{"id": "day-1"}]
+            if table == "program_blocks":
+                return [{"id": "block-1", "day_id": "day-1", "block_number": 1}]
+            if table == "program_exercises":
+                return [
+                    {"id": "exercise-1", "block_id": "block-1", "exercise_number": 1, "exercise_name": "Bench Press", "set_count": 3},
+                ]
+            if table == "workout_exercise_logs":
+                return []
+            if table == "workout_sets":
+                return []
+            if table == "workout_sessions":
+                return [{"id": "session-1", "total_sets": 0, "total_volume": 0}]
+            return []
+
+        def insert(self, table, payload):
+            if table == "workout_exercise_logs":
+                row = {"id": "log-1", **payload}
+                self.inserted_logs.append(row)
+                return row
+            if table == "workout_sets":
+                row = {"id": "set-1", **payload}
+                self.inserted_sets.append(row)
+                return row
+            raise AssertionError(table)
+
+        def update(self, table, filters, payload):
+            return {"id": "session-1", **payload}
+
+    client = FakeClient()
+    result = _log_set(
+        client,
+        AssistantAction(action="log_set", exercise_name="bench", reps=5, weight=185),
+        context={
+            "activeProgramId": "program-1",
+            "currentWorkout": {"sessionId": "session-1", "step": {"exerciseName": "Bench Press"}},
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["ui_patch"]["exerciseName"] == "Bench Press"
+    assert client.inserted_logs[0]["exercise_name"] == "Bench Press"
+
+
+def test_log_set_asks_before_logging_different_planned_exercise():
+    class FakeClient:
+        def select(self, table, params):
+            if table == "program_days":
+                return [{"id": "day-1"}]
+            if table == "program_blocks":
+                return [{"id": "block-1", "day_id": "day-1", "block_number": 1}]
+            if table == "program_exercises":
+                return [
+                    {"id": "exercise-1", "block_id": "block-1", "exercise_number": 1, "exercise_name": "Bench Press", "set_count": 3},
+                    {"id": "exercise-2", "block_id": "block-1", "exercise_number": 2, "exercise_name": "Back Squat", "set_count": 3},
+                ]
+            return []
+
+    result = _log_set(
+        FakeClient(),
+        AssistantAction(action="log_set", exercise_name="squat", reps=5, weight=225),
+        context={
+            "activeProgramId": "program-1",
+            "currentWorkout": {"sessionId": "session-1", "step": {"exerciseName": "Bench Press"}},
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["action_result"]["needs_confirmation"] is True
+    assert "Did you mean to log Back Squat instead?" in result["message"]
+
+
+def test_log_set_asks_before_logging_unplanned_off_current_exercise():
+    class FakeClient:
+        def select(self, table, params):
+            if table == "program_days":
+                return [{"id": "day-1"}]
+            if table == "program_blocks":
+                return [{"id": "block-1", "day_id": "day-1", "block_number": 1}]
+            if table == "program_exercises":
+                return [
+                    {"id": "exercise-1", "block_id": "block-1", "exercise_number": 1, "exercise_name": "Hammer Curl", "set_count": 3},
+                ]
+            return []
+
+    result = _log_set(
+        FakeClient(),
+        AssistantAction(action="log_set", exercise_name="backquats", reps=5, weight=225),
+        context={
+            "activeProgramId": "program-1",
+            "currentWorkout": {"sessionId": "session-1", "step": {"exerciseName": "Hammer Curl"}},
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["action_result"]["needs_confirmation"] is True
+    assert result["action_result"]["requested_exercise"] == "backquats"
+    assert "You are currently on Hammer Curl" in result["message"]
+
+
+def test_log_set_advances_from_current_step_not_existing_logs():
+    class FakeClient:
+        def __init__(self):
+            self.inserted_logs = []
+
+        def select(self, table, params):
+            if table == "program_days":
+                return [{"id": "day-1"}]
+            if table == "program_blocks":
+                return [{"id": "block-1", "day_id": "day-1", "block_number": 1}]
+            if table == "program_exercises":
+                return [
+                    {"id": "exercise-1", "block_id": "block-1", "exercise_number": 1, "exercise_name": "Bench Press", "set_count": 3},
+                    {"id": "exercise-2", "block_id": "block-1", "exercise_number": 2, "exercise_name": "Hammer Curl", "set_count": 3},
+                ]
+            if table == "workout_exercise_logs":
+                return [
+                    {"id": "off-plan-log", "exercise_number": 1, "exercise_name": "Back Squat"},
+                ]
+            if table == "workout_sets":
+                return []
+            if table == "workout_sessions":
+                return [{"id": "session-1", "total_sets": 1, "total_volume": 225}]
+            return []
+
+        def insert(self, table, payload):
+            if table == "workout_exercise_logs":
+                row = {"id": "log-2", **payload}
+                self.inserted_logs.append(row)
+                return row
+            if table == "workout_sets":
+                return {"id": "set-2", **payload}
+            raise AssertionError(table)
+
+        def update(self, table, filters, payload):
+            return {"id": "session-1", **payload}
+
+    result = _log_set(
+        FakeClient(),
+        AssistantAction(action="log_set", exercise_name="hammer curl", reps=10, weight=25),
+        context={
+            "activeProgramId": "program-1",
+            "currentWorkout": {
+                "sessionId": "session-1",
+                "step": {"exerciseName": "Hammer Curl", "setNumber": 2, "setCount": 3},
+            },
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["ui_patch"]["step"]["exerciseName"] == "Hammer Curl"
+    assert result["ui_patch"]["step"]["setNumber"] == 3

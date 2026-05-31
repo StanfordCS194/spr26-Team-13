@@ -134,6 +134,96 @@ function nameSimilarity(left, right) {
   return overlap / Math.max(leftSet.size, rightWords.length, 1);
 }
 
+function shouldAcknowledgeLongCoachTask(transcript) {
+  const text = normalizeCoachName(transcript);
+  return /\b(build|create|generate|make|write|program)\b/.test(text)
+    && /\b(workout|program|session)\b/.test(text);
+}
+
+function isAffirmativeCoachReply(transcript) {
+  const text = normalizeCoachName(transcript);
+  return /^(yes|yeah|yep|correct|right|confirm|do it|log it|that is right|that's right)\b/.test(text);
+}
+
+function isNegativeCoachReply(transcript) {
+  const text = normalizeCoachName(transcript);
+  return /^(no|nope|cancel|do not|don't|nevermind|never mind)\b/.test(text);
+}
+
+function buildPendingLogFromTranscript(transcript, { programId, sessionId, currentExerciseName }) {
+  if (!sessionId || !currentExerciseName) return null;
+  const text = normalizeCoachName(transcript);
+  if (!/\b(log|record|add|did|done|completed|finished)\b/.test(text)) return null;
+
+  const repsMatch = text.match(/\b(\d+)\s*(?:reps?|rep)?\b/);
+  const reps = repsMatch ? Number.parseInt(repsMatch[1], 10) : null;
+  if (!Number.isFinite(reps)) return null;
+
+  const weightMatch = text.match(/\b(?:at|with|for)\s+(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?)?\b/);
+  const weight = weightMatch ? Number.parseFloat(weightMatch[1]) : null;
+  const requestedExercise = findMentionedProgramExercise(text, programId);
+  if (!requestedExercise) return null;
+  if (namesCloseEnough(requestedExercise.name, currentExerciseName)) return null;
+
+  return {
+    sessionId,
+    programId,
+    exerciseName: requestedExercise.name,
+    currentExerciseName,
+    reps,
+    weight: Number.isFinite(weight) ? weight : null,
+  };
+}
+
+function findMentionedProgramExercise(text, programId) {
+  const detail = window.getProgramDetail && programId ? window.getProgramDetail(programId) : window.PROGRAM_DETAIL;
+  const exercises = getAllProgramExercisesForCoach(detail);
+  let best = null;
+  let bestScore = 0;
+  exercises.forEach((exercise) => {
+    const name = normalizeCoachName(exercise.name || exercise.exercise_name);
+    if (!name) return;
+    const compactName = name.replace(/\s+/g, '');
+    const compactText = text.replace(/\s+/g, '');
+    const score = text.includes(name) || compactText.includes(compactName)
+      ? 1
+      : Math.max(nameSimilarity(text, name), compactSimilarity(compactText, compactName));
+    if (score > bestScore) {
+      best = exercise;
+      bestScore = score;
+    }
+  });
+  return bestScore >= 0.68 ? best : null;
+}
+
+function getAllProgramExercisesForCoach(detail) {
+  if (!detail) return [];
+  if (Array.isArray(detail.exercises) && detail.exercises.length) return detail.exercises;
+  return (detail.days || []).flatMap((day) =>
+    (day.blocks || []).flatMap((block) => block.exercises || []),
+  );
+}
+
+function namesCloseEnough(left, right) {
+  const leftName = normalizeCoachName(left);
+  const rightName = normalizeCoachName(right);
+  return leftName === rightName
+    || leftName.includes(rightName)
+    || rightName.includes(leftName)
+    || compactSimilarity(leftName.replace(/\s+/g, ''), rightName.replace(/\s+/g, '')) >= 0.8
+    || nameSimilarity(leftName, rightName) >= 0.68;
+}
+
+function compactSimilarity(left, right) {
+  if (!left || !right) return 0;
+  if (left === right || left.includes(right) || right.includes(left)) return 1;
+  const leftPairs = new Set(Array.from({ length: Math.max(left.length - 1, 0) }, (_, index) => left.slice(index, index + 2)));
+  const rightPairs = Array.from({ length: Math.max(right.length - 1, 0) }, (_, index) => right.slice(index, index + 2));
+  if (!leftPairs.size || !rightPairs.length) return 0;
+  const overlap = rightPairs.filter((pair) => leftPairs.has(pair)).length;
+  return overlap / Math.max(leftPairs.size, rightPairs.length, 1);
+}
+
 function App() {
   const auth = useAuth();
   const isNativeApp = Boolean(window.TRAINAR_NATIVE_APP);
@@ -158,13 +248,16 @@ function App() {
   const [activeSessionId, setActiveSessionId] = React.useState(null);
   const [activeWorkoutDay, setActiveWorkoutDay] = React.useState(null);
   const [activeWorkoutStep, setActiveWorkoutStep] = React.useState(null);
+  const [lastLoggedSet, setLastLoggedSet] = React.useState(null);
   const [activeRest, setActiveRest] = React.useState(null);
   const activeProgramIdRef = React.useRef(activeProgramId);
   const activeSessionIdRef = React.useRef(activeSessionId);
   const activeWorkoutDayRef = React.useRef(activeWorkoutDay);
   const activeWorkoutStepRef = React.useRef(activeWorkoutStep);
+  const lastLoggedSetRef = React.useRef(lastLoggedSet);
   const activeRestRef = React.useRef(activeRest);
   const loadedToGlassesRef = React.useRef(loadedToGlasses);
+  const pendingLogConfirmationRef = React.useRef(null);
   const coachTurnIdRef = React.useRef(0);
   const appliedCoachTurnIdRef = React.useRef(0);
   const [selectedProgramId, setSelectedProgramId] = React.useState(null);
@@ -205,9 +298,23 @@ function App() {
     activeSessionIdRef.current = activeSessionId;
     activeWorkoutDayRef.current = activeWorkoutDay;
     activeWorkoutStepRef.current = activeWorkoutStep;
+    lastLoggedSetRef.current = lastLoggedSet;
     activeRestRef.current = activeRest;
     loadedToGlassesRef.current = loadedToGlasses;
-  }, [activeProgramId, activeSessionId, activeWorkoutDay, activeWorkoutStep, activeRest, loadedToGlasses]);
+  }, [activeProgramId, activeSessionId, activeWorkoutDay, activeWorkoutStep, lastLoggedSet, activeRest, loadedToGlasses]);
+
+  React.useEffect(() => {
+    if (!window.buildTrainARHudStateSnapshot) return;
+    const hudState = window.buildTrainARHudStateSnapshot({
+      programId: activeProgramId,
+      day: activeWorkoutDay,
+      step: activeWorkoutStep,
+      rest: activeRest,
+      coachResponse,
+    });
+    window.TRAINAR_HUD_STATE = hudState;
+    window.dispatchEvent(new CustomEvent('trainar:hud-state', { detail: hudState }));
+  }, [activeProgramId, activeWorkoutDay, activeWorkoutStep, activeRest, coachResponse]);
 
   React.useEffect(() => {
     if (auth.pending) return;
@@ -259,12 +366,14 @@ function App() {
     activeSessionIdRef.current = null;
     activeWorkoutDayRef.current = null;
     activeWorkoutStepRef.current = null;
+    lastLoggedSetRef.current = null;
     activeRestRef.current = null;
     setLoadedToGlasses(false);
     setActiveProgramId(null);
     setActiveSessionId(null);
     setActiveWorkoutDay(null);
     setActiveWorkoutStep(null);
+    setLastLoggedSet(null);
     setActiveRest(null);
     setSelectedProgramId(null);
     setScreen('splash');
@@ -287,12 +396,14 @@ function App() {
     activeProgramIdRef.current = nextProgramId;
     activeWorkoutDayRef.current = nextDay;
     activeWorkoutStepRef.current = nextStep;
+    lastLoggedSetRef.current = null;
     activeRestRef.current = null;
     loadedToGlassesRef.current = true;
     setActiveProgramId(nextProgramId);
     setLoadedToGlasses(true);
     setActiveWorkoutDay(nextDay);
     setActiveWorkoutStep(nextStep);
+    setLastLoggedSet(null);
     setActiveRest(null);
     setScreen('running');
     setStack([]);
@@ -313,28 +424,42 @@ function App() {
     loadedToGlassesRef.current = false;
     activeWorkoutDayRef.current = null;
     activeWorkoutStepRef.current = null;
+    lastLoggedSetRef.current = null;
     activeRestRef.current = null;
     setLoadedToGlasses(false);
     setActiveWorkoutDay(null);
     setActiveWorkoutStep(null);
+    setLastLoggedSet(null);
     setActiveRest(null);
     if (window.finishWorkout && sessionIdToFinish) {
       try {
-        await window.finishWorkout(sessionIdToFinish, programIdToFinish);
+        const finishedSession = await window.finishWorkout(sessionIdToFinish, programIdToFinish);
+        if (finishedSession?.id && window.selectPastWorkout) {
+          const finishedWorkout = await window.selectPastWorkout(finishedSession.id);
+          setSelectedPastWorkout(finishedWorkout || window.PAST_WORKOUT || null);
+        } else {
+          setSelectedPastWorkout(window.PAST_WORKOUT || null);
+        }
       } catch (err) {
         console.error('Could not finish workout:', err);
+        setSelectedPastWorkout(window.PAST_WORKOUT || null);
       }
+    } else {
+      setSelectedPastWorkout(window.PAST_WORKOUT || null);
     }
     activeSessionIdRef.current = null;
     setActiveSessionId(null);
-    go('past');
+    setStack([]);
+    setScreen('past');
   };
 
   const advanceWorkoutStep = () => {
     const nextStep = nextStepForProgram(activeProgramIdRef.current, activeWorkoutStepRef.current, { day: activeWorkoutDayRef.current });
     activeWorkoutStepRef.current = nextStep;
+    lastLoggedSetRef.current = null;
     activeRestRef.current = null;
     setActiveWorkoutStep(nextStep);
+    setLastLoggedSet(null);
     setActiveRest(null);
   };
 
@@ -344,9 +469,16 @@ function App() {
       day: activeWorkoutDayRef.current,
     });
     activeWorkoutStepRef.current = nextStep;
+    lastLoggedSetRef.current = null;
     activeRestRef.current = null;
     setActiveWorkoutStep(nextStep);
+    setLastLoggedSet(null);
     setActiveRest(null);
+  };
+
+  const openHudDemo = () => {
+    setStack((prev) => [...prev, screen]);
+    setScreen('hud');
   };
 
   React.useEffect(() => {
@@ -365,9 +497,72 @@ function App() {
 
       if (detail.type !== 'voiceCommand') return;
 
+      const pendingLog = pendingLogConfirmationRef.current;
+      if (pendingLog && isAffirmativeCoachReply(transcript)) {
+        pendingLogConfirmationRef.current = null;
+        if (window.logWorkoutSet) {
+          window.logWorkoutSet(pendingLog.sessionId, {
+            exerciseName: pendingLog.exerciseName,
+            reps: pendingLog.reps,
+            weight: pendingLog.weight,
+            programId: pendingLog.programId,
+            currentExerciseName: activeWorkoutStepRef.current?.exerciseName,
+            allowOffCurrent: true,
+          }).then((result) => {
+            const logged = {
+              exerciseName: result?.exerciseLog?.exercise_name || pendingLog.exerciseName,
+              setNumber: result?.set?.set_number || null,
+              reps: result?.set?.reps ?? pendingLog.reps,
+              weight: result?.set?.load_value ?? pendingLog.weight,
+            };
+            lastLoggedSetRef.current = logged;
+            setLastLoggedSet(logged);
+            const response = `Logged ${logged.reps} reps of ${logged.exerciseName}${logged.weight != null ? ` at ${logged.weight} lb` : ''}.`;
+            setCoachResponse({ response });
+            setWakeActive(false);
+            window.dispatchEvent(new CustomEvent('trainar:speak', { detail: { text: response } }));
+          }).catch((err) => {
+            setCoachResponse({ response: err.message || 'Could not log that set.' });
+            setWakeActive(false);
+          });
+        }
+        return;
+      }
+
+      if (pendingLog && isNegativeCoachReply(transcript)) {
+        pendingLogConfirmationRef.current = null;
+        setCoachResponse({ response: 'Okay, I did not log it.' });
+        setWakeActive(false);
+        window.dispatchEvent(new CustomEvent('trainar:speak', { detail: { text: 'Okay, I did not log it.' } }));
+        return;
+      }
+
+      const pendingLogFromTranscript = buildPendingLogFromTranscript(transcript, {
+        programId: activeProgramIdRef.current,
+        sessionId: activeSessionIdRef.current,
+        currentExerciseName: activeWorkoutStepRef.current?.exerciseName,
+      });
+      if (pendingLogFromTranscript && window.logWorkoutSet) {
+        pendingLogConfirmationRef.current = pendingLogFromTranscript;
+        const response = `You are currently on ${pendingLogFromTranscript.currentExerciseName}. Did you mean to log ${pendingLogFromTranscript.exerciseName} instead?`;
+        setCoachResponse({ response, expectsFollowUp: true });
+        setWakeActive(true);
+        window.dispatchEvent(new CustomEvent('trainar:speak', {
+          detail: { text: response, continueListening: true },
+        }));
+        return;
+      }
+
       if (window.askTrainARCoach && transcript) {
         const clientTurnId = coachTurnIdRef.current + 1;
         coachTurnIdRef.current = clientTurnId;
+        if (shouldAcknowledgeLongCoachTask(transcript)) {
+          setWakeActive(true);
+          setCoachResponse({ response: 'Working on it.', processing: true });
+          window.dispatchEvent(new CustomEvent('trainar:speak', {
+            detail: { text: 'Working on it.' },
+          }));
+        }
         const currentProgramId = activeProgramIdRef.current;
         const currentSessionId = activeSessionIdRef.current;
         const currentDay = activeWorkoutDayRef.current;
@@ -386,6 +581,7 @@ function App() {
           } : null,
         }).catch((err) => {
           setCoachResponse({ response: err.message || 'Coach assistant failed.' });
+          setWakeActive(false);
         });
         return;
       }
@@ -401,9 +597,18 @@ function App() {
     };
 
     const onCoachResponse = (event) => {
-      setCoachResponse(event.detail || null);
-      // Coach turn is over — drop the green listening border.
-      setWakeActive(false);
+      const detail = event.detail || null;
+      if (detail?.actionResult?.needs_confirmation && detail.actionResult.requested_exercise) {
+        pendingLogConfirmationRef.current = {
+          sessionId: activeSessionIdRef.current,
+          programId: activeProgramIdRef.current,
+          exerciseName: detail.actionResult.requested_exercise,
+          reps: detail.actionResult.reps,
+          weight: detail.actionResult.weight,
+        };
+      }
+      setCoachResponse(detail);
+      setWakeActive(Boolean(detail?.expectsFollowUp));
     };
 
     const onCoachAction = async (event) => {
@@ -415,6 +620,10 @@ function App() {
 
       if (patch.type === 'program_created') {
         const programId = patch.programId || null;
+        let detail = null;
+        if (window.upsertTrainarProgramCache && (patch.program || patch.detail)) {
+          detail = window.upsertTrainarProgramCache(patch.program, patch.detail);
+        }
         if (auth.user && window.loadTrainarData) {
           try {
             await window.loadTrainarData(auth.user.id);
@@ -423,9 +632,12 @@ function App() {
           }
         }
         if (programId) {
-          const detail = window.getProgramDetail ? window.getProgramDetail(programId) : null;
+          if (window.upsertTrainarProgramCache && (patch.program || patch.detail)) {
+            detail = window.upsertTrainarProgramCache(patch.program, patch.detail) || detail;
+          }
+          detail = detail || (window.getProgramDetail ? window.getProgramDetail(programId) : null);
           setSelectedProgramId(programId);
-          setParsedProgram(detail || window.PROGRAM_DETAIL || null);
+          setParsedProgram(detail || patch.detail || null);
           setStack((prev) => [...prev, 'home']);
           setScreen('detail');
         }
@@ -433,6 +645,9 @@ function App() {
       }
 
       if (patch.type === 'workout_started') {
+        if (window.upsertTrainarProgramCache && (patch.program || patch.detail)) {
+          window.upsertTrainarProgramCache(patch.program, patch.detail);
+        }
         const nextDay = patch.day || resolveWorkoutDay(patch.programId || activeProgramId, null);
         const nextProgramId = patch.programId || activeProgramId;
         const nextStep = patch.step || nextStepForProgram(nextProgramId, null, { day: nextDay });
@@ -440,12 +655,14 @@ function App() {
         activeSessionIdRef.current = patch.sessionId || null;
         activeWorkoutDayRef.current = nextDay;
         activeWorkoutStepRef.current = nextStep;
+        lastLoggedSetRef.current = null;
         activeRestRef.current = null;
         loadedToGlassesRef.current = true;
         setActiveProgramId(nextProgramId);
         setActiveSessionId(patch.sessionId || null);
         setActiveWorkoutDay(nextDay);
         setActiveWorkoutStep(nextStep);
+        setLastLoggedSet(null);
         setActiveRest(null);
         setLoadedToGlasses(true);
         setScreen('running');
@@ -461,16 +678,20 @@ function App() {
         activeSessionIdRef.current = null;
         activeWorkoutDayRef.current = null;
         activeWorkoutStepRef.current = null;
+        lastLoggedSetRef.current = null;
         activeRestRef.current = null;
         setLoadedToGlasses(false);
         setActiveSessionId(null);
         setActiveWorkoutDay(null);
         setActiveWorkoutStep(null);
+        setLastLoggedSet(null);
         setActiveRest(null);
         if (auth.user && window.loadTrainarData) {
           window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
         }
-        go('past');
+        setSelectedPastWorkout(window.PAST_WORKOUT || null);
+        setStack([]);
+        setScreen('past');
         return;
       }
 
@@ -480,6 +701,10 @@ function App() {
           activeRestRef.current = null;
           setActiveWorkoutStep(patch.step || null);
           setActiveRest(null);
+        }
+        if (patch.loggedSet) {
+          lastLoggedSetRef.current = patch.loggedSet;
+          setLastLoggedSet(patch.loggedSet);
         }
         if (auth.user && window.loadTrainarData) {
           window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
@@ -504,6 +729,17 @@ function App() {
           exerciseName: patch.exerciseName,
           reps: patch.reps,
           weight: patch.weight,
+          programId: activeProgramIdRef.current,
+          currentExerciseName: activeWorkoutStepRef.current?.exerciseName,
+        }).then((result) => {
+          const logged = {
+            exerciseName: result?.exerciseLog?.exercise_name || patch.exerciseName || activeWorkoutStepRef.current?.exerciseName,
+            setNumber: result?.set?.set_number || null,
+            reps: result?.set?.reps ?? patch.reps,
+            weight: result?.set?.load_value ?? patch.weight,
+          };
+          lastLoggedSetRef.current = logged;
+          setLastLoggedSet(logged);
         }).catch((err) => {
           setCoachResponse({ response: err.message || 'Could not log that set.' });
         });
@@ -512,8 +748,10 @@ function App() {
 
       if (patch.type === 'exercise_started' || patch.type === 'workout_step_updated') {
         activeWorkoutStepRef.current = patch.step || null;
+        lastLoggedSetRef.current = null;
         activeRestRef.current = null;
         setActiveWorkoutStep(patch.step || null);
+        setLastLoggedSet(null);
         setActiveRest(null);
         if (patch.step) setScreen('running');
         return;
@@ -526,11 +764,13 @@ function App() {
         };
         activeRestRef.current = nextRest;
         if (patch.step) activeWorkoutStepRef.current = patch.step;
+        if (patch.step) lastLoggedSetRef.current = null;
         setActiveRest({
           durationSeconds: nextRest.durationSeconds,
           startedAt: nextRest.startedAt,
         });
         if (patch.step) setActiveWorkoutStep(patch.step);
+        if (patch.step) setLastLoggedSet(null);
         return;
       }
 
@@ -556,8 +796,10 @@ function App() {
           setCount: activeWorkoutStepRef.current?.setCount || 1,
         };
         activeWorkoutStepRef.current = nextStep;
+        lastLoggedSetRef.current = null;
         activeRestRef.current = null;
         setActiveWorkoutStep(nextStep);
+        setLastLoggedSet(null);
         setActiveRest(null);
         setScreen('running');
         return;
@@ -668,11 +910,24 @@ function App() {
         sessionId={activeSessionId}
         day={activeWorkoutDay}
         step={activeWorkoutStep}
+        lastLoggedSet={lastLoggedSet}
         rest={activeRest}
         onClose={() => switchTab('home')}
+        onOpenHud={openHudDemo}
         onFinish={finishWorkout}
         onNextSet={advanceWorkoutStep}
         onSkipExercise={skipWorkoutExercise}
+      />
+    ),
+
+    hud: (
+      <HudDemoScreen
+        programId={activeProgramId}
+        day={activeWorkoutDay}
+        step={activeWorkoutStep}
+        rest={activeRest}
+        coachResponse={coachResponse}
+        onClose={back}
       />
     ),
 
@@ -749,10 +1004,12 @@ function App() {
         onClose={back}
         onStartWorkout={() => startWorkout(selectedProgramId || parsedProgram?.programId)}
         onFinishWorkout={finishWorkout}
-        onDiscard={() => {
-          if (window.archiveProgram && selectedProgramId) {
-            window.archiveProgram(selectedProgramId).catch((err) => console.error('Could not archive program:', err));
-          }
+        onDiscard={async () => {
+          const programId = selectedProgramId || parsedProgram?.programId || null;
+          if (!window.archiveProgram) throw new Error('Program discard is not available.');
+          await window.archiveProgram(programId);
+          setSelectedProgramId(null);
+          setParsedProgram(window.PROGRAM_DETAIL || null);
           setStack([]);
           setScreen('home');
           setActiveTab('home');
@@ -779,7 +1036,7 @@ function App() {
       {showTabBar && (
         <TabBar active={activeTab} live={loadedToGlasses} onTab={switchTab} />
       )}
-      {coachResponse?.response && (
+      {screen !== 'hud' && coachResponse?.response && (
         <CoachOverlay
           response={coachResponse.response}
           onClose={() => setCoachResponse(null)}

@@ -5,9 +5,11 @@ const CalendarScreen = ({ onOpenWorkout }) => {
   const sessions = window.TRAINAR_SESSIONS || [];
   const initialMonth = getInitialCalendarMonth(sessions);
   const [visibleMonth, setVisibleMonth] = React.useState(initialMonth);
+  const [selectedDay, setSelectedDay] = React.useState(null);
   const monthModel = buildCalendarMonth(sessions, visibleMonth.year, visibleMonth.monthIndex);
   const monthDays = monthModel.days;
   const firstDayOffset = monthModel.firstDayOffset;
+  const selectedDaySessions = selectedDay ? (monthModel.sessionsByDay[selectedDay] || []) : [];
 
   const stats = monthModel.stats || window.ACTIVITY_STATS || {
     sessions: monthDays.filter((d) => d > 0).length,
@@ -65,7 +67,7 @@ const CalendarScreen = ({ onOpenWorkout }) => {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <button
-          onClick={() => setVisibleMonth(shiftMonth(visibleMonth, -1))}
+          onClick={() => { setSelectedDay(null); setVisibleMonth(shiftMonth(visibleMonth, -1)); }}
           className="press"
           style={{
           width: 32, height: 32, borderRadius: 9999,
@@ -75,7 +77,7 @@ const CalendarScreen = ({ onOpenWorkout }) => {
         ><Icon name="chevron-left" size={14} /></button>
         <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel(visibleMonth)}</div>
         <button
-          onClick={() => setVisibleMonth(shiftMonth(visibleMonth, 1))}
+          onClick={() => { setSelectedDay(null); setVisibleMonth(shiftMonth(visibleMonth, 1)); }}
           className="press"
           style={{
           width: 32, height: 32, borderRadius: 9999,
@@ -108,11 +110,18 @@ const CalendarScreen = ({ onOpenWorkout }) => {
           const today = appDateParts(new Date().toISOString());
           const isToday = day === today.day && visibleMonth.monthIndex === today.monthIndex && visibleMonth.year === today.year;
           const cell = intensities[v];
-          const sessionId = monthModel.sessionIds[day]?.id;
+          const daySessions = monthModel.sessionsByDay[day] || [];
           return (
             <button
               key={i}
-              onClick={() => v > 0 && sessionId && onOpenWorkout && onOpenWorkout(sessionId)}
+              onClick={() => {
+                if (!v || !daySessions.length) return;
+                if (daySessions.length === 1) {
+                  onOpenWorkout && onOpenWorkout(daySessions[0].id);
+                } else {
+                  setSelectedDay(day);
+                }
+              }}
               className={v > 0 ? 'press' : ''}
               style={{
                 aspectRatio: '1',
@@ -134,6 +143,12 @@ const CalendarScreen = ({ onOpenWorkout }) => {
               {v > 0 && (
                 <div style={{ width: 6, height: 6, borderRadius: 3, background: cell.dot, zIndex: 1 }} />
               )}
+              {daySessions.length > 1 && (
+                <div className="mono" style={{
+                  position: 'absolute', right: 4, bottom: 3, zIndex: 2,
+                  fontSize: 8, color: 'var(--accent)', fontWeight: 700,
+                }}>{daySessions.length}</div>
+              )}
               {v > 0 && (
                 <div style={{ position: 'absolute', inset: 0, background: cell.bg, opacity: 0.5 }} />
               )}
@@ -141,6 +156,62 @@ const CalendarScreen = ({ onOpenWorkout }) => {
           );
         })}
       </div>
+
+      {selectedDaySessions.length > 1 && (
+        <div style={{ padding: '0 20px 18px' }}>
+          <div style={{
+            padding: 14,
+            borderRadius: 'var(--r-card)',
+            background: 'var(--surface-1)',
+            border: '1px solid var(--hairline)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
+                {monthLabel(visibleMonth)} {selectedDay}
+              </div>
+              <button
+                onClick={() => setSelectedDay(null)}
+                aria-label="Close day workouts"
+                style={{
+                  width: 26, height: 26, borderRadius: 9999,
+                  border: '1px solid var(--hairline)',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <Icon name="x" size={13} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {selectedDaySessions.map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => onOpenWorkout && onOpenWorkout(session.id)}
+                  className="press"
+                  style={{
+                    width: '100%',
+                    padding: '12px 12px',
+                    borderRadius: 12,
+                    border: '1px solid var(--hairline)',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-1)',
+                    textAlign: 'left',
+                    fontFamily: 'var(--font-sans)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 650 }}>{session.title || 'Workout'}</div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>
+                    {formatSessionTime(session.started_at || session.created_at)} · {session.total_sets || 0} sets
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent sessions list. */}
       <div style={{ padding: '0 20px' }}>
@@ -204,6 +275,7 @@ function buildCalendarMonth(sessions, year, monthIndex) {
   const firstDayOffset = (firstWeekday + 6) % 7;
   const days = Array.from({ length: daysInMonth }, () => 0);
   const sessionIds = {};
+  const sessionsByDay = {};
 
   sessions.forEach((session) => {
     const parts = appDateParts(session.started_at || session.created_at);
@@ -216,9 +288,15 @@ function buildCalendarMonth(sessions, year, monthIndex) {
     if (!sessionIds[parts.day] || parts.sortKey > sessionIds[parts.day].sortKey) {
       sessionIds[parts.day] = { ...session, sortKey: parts.sortKey };
     }
+    sessionsByDay[parts.day] = sessionsByDay[parts.day] || [];
+    sessionsByDay[parts.day].push({ ...session, sortKey: parts.sortKey });
   });
 
-  return { days, firstDayOffset, sessionIds, stats: buildCalendarStats(sessions, year, monthIndex) };
+  Object.keys(sessionsByDay).forEach((day) => {
+    sessionsByDay[day].sort((left, right) => right.sortKey.localeCompare(left.sortKey));
+  });
+
+  return { days, firstDayOffset, sessionIds, sessionsByDay, stats: buildCalendarStats(sessions, year, monthIndex) };
 }
 
 function buildCalendarStats(sessions, year, monthIndex) {
@@ -266,6 +344,15 @@ function shiftMonth(month, delta) {
 function monthLabel(month) {
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(Date.UTC(month.year, month.monthIndex, 1)));
+}
+
+function formatSessionTime(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/Los_Angeles',
+  }).format(new Date(value));
 }
 
 function appDateParts(value) {

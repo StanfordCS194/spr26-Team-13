@@ -33,6 +33,50 @@
     window.dispatchEvent(new CustomEvent('trainar:data'));
   }
 
+  function upsertTrainarProgramCache(program, detail) {
+    const programId = program?.id || detail?.programId;
+    if (!programId) return null;
+
+    const nextDetail = detail || window.TRAINAR_PROGRAM_DETAILS[programId] || null;
+    const nextProgram = {
+      ...(window.PROGRAMS || []).find((item) => item.id === programId),
+      ...(program || {}),
+      id: programId,
+      name: program?.name || detail?.name || program?.title || 'Generated workout',
+    };
+
+    window.PROGRAMS = [
+      nextProgram,
+      ...(window.PROGRAMS || []).filter((item) => item.id !== programId),
+    ];
+    if (nextDetail) {
+      window.TRAINAR_PROGRAM_DETAILS = {
+        ...(window.TRAINAR_PROGRAM_DETAILS || {}),
+        [programId]: nextDetail,
+      };
+      window.PROGRAM_DETAIL = nextDetail;
+      window.PARSED_PROGRAM = nextDetail;
+    }
+    emitDataChange();
+    return nextDetail;
+  }
+
+  function removeTrainarProgramCache(programId) {
+    if (!programId) return;
+    window.PROGRAMS = (window.PROGRAMS || []).filter((item) => item.id !== programId);
+    if (window.TRAINAR_PROGRAM_DETAILS) {
+      delete window.TRAINAR_PROGRAM_DETAILS[programId];
+    }
+    if (window.PROGRAM_DETAIL?.programId === programId) {
+      const nextProgram = (window.PROGRAMS || [])[0];
+      window.PROGRAM_DETAIL = nextProgram
+        ? window.TRAINAR_PROGRAM_DETAILS[nextProgram.id] || { exercises: [], days: [] }
+        : { exercises: [], days: [] };
+      window.PARSED_PROGRAM = window.PROGRAM_DETAIL;
+    }
+    emitDataChange();
+  }
+
   function resetTrainarData() {
     window.PROGRAMS = [];
     window.PROGRAM_DETAIL = { exercises: [], days: [] };
@@ -276,15 +320,21 @@
   }
 
   async function archiveProgram(programId) {
-    if (!programId) return;
-    const { error } = await client()
+    if (!programId) throw new Error('No program selected to discard.');
+    const { data, error } = await client()
       .from('programs')
       .update({ archived_at: new Date().toISOString() })
-      .eq('id', programId);
+      .eq('id', programId)
+      .select('id')
+      .single();
     throwIfError(error);
+    if (!data?.id) throw new Error('Could not discard this program.');
 
-    const { data } = await client().auth.getUser();
-    if (data.user) await loadTrainarData(data.user.id);
+    removeTrainarProgramCache(programId);
+
+    const authRes = await client().auth.getUser();
+    if (authRes.data.user) await loadTrainarData(authRes.data.user.id);
+    return data.id;
   }
 
   async function pairDemoDevice() {
@@ -336,21 +386,17 @@
 
   async function finishWorkout(sessionId, programId) {
     if (!sessionId) return null;
-    const detail = window.getProgramDetail(programId) || window.PROGRAM_DETAIL || { exercises: [] };
-    const exercises = getDetailExercises(detail);
-    const totalSets = exercises.reduce((sum, exercise) => sum + normalizeSetCount(exercise.sets), 0);
-    const startedAt = new Date(Date.now() - 45 * 60 * 1000);
     const finishedAt = new Date();
+    const totals = await loadSessionTotals(sessionId);
 
     const { data: session, error } = await client()
       .from('workout_sessions')
       .update({
         status: 'completed',
-        started_at: startedAt.toISOString(),
         finished_at: finishedAt.toISOString(),
-        duration_seconds: Math.round((finishedAt - startedAt) / 1000),
-        total_sets: totalSets,
-        total_volume: 0,
+        duration_seconds: totals.durationSeconds,
+        total_sets: totals.totalSets,
+        total_volume: totals.totalVolume,
         avg_rpe: null,
         auto_tracked_ratio: null,
       })
@@ -361,12 +407,61 @@
 
     const { data: authData } = await client().auth.getUser();
     if (authData.user) await loadTrainarData(authData.user.id);
+    window.PAST_WORKOUT = await loadPastWorkout(session, window.TRAINAR_PRS || []);
+    emitDataChange();
     return session;
   }
 
-  async function logWorkoutSet(sessionId, { exerciseName, reps, weight, rpe = null } = {}) {
+  async function loadSessionTotals(sessionId) {
+    const sessionRes = await client()
+      .from('workout_sessions')
+      .select('started_at,created_at,total_sets,total_volume')
+      .eq('id', sessionId)
+      .single();
+    throwIfError(sessionRes.error);
+
+    const logsRes = await client()
+      .from('workout_exercise_logs')
+      .select('id')
+      .eq('session_id', sessionId);
+    throwIfError(logsRes.error);
+
+    const logIds = (logsRes.data || []).map((log) => log.id);
+    const setsRes = logIds.length
+      ? await client()
+        .from('workout_sets')
+        .select('reps,load_value')
+        .in('exercise_log_id', logIds)
+      : { data: [] };
+    throwIfError(setsRes.error);
+
+    const sets = setsRes.data || [];
+    const totalVolume = sets.reduce((sum, set) => sum + Number(set.reps || 0) * Number(set.load_value || 0), 0);
+    const startedAt = new Date(sessionRes.data?.started_at || sessionRes.data?.created_at || Date.now());
+    const durationSeconds = Number.isNaN(startedAt.getTime())
+      ? null
+      : Math.max(0, Math.round((Date.now() - startedAt.getTime()) / 1000));
+
+    return {
+      totalSets: sets.length || Number(sessionRes.data?.total_sets || 0),
+      totalVolume: totalVolume || Number(sessionRes.data?.total_volume || 0),
+      durationSeconds,
+    };
+  }
+
+  async function logWorkoutSet(sessionId, { exerciseName, reps, weight, rpe = null, programId = null, currentExerciseName = null, allowOffCurrent = false } = {}) {
     if (!sessionId) throw new Error('Start a workout before logging sets.');
-    const cleanExerciseName = String(exerciseName || '').trim();
+    const resolvedExercise = resolvePlannedExerciseName(programId, exerciseName || currentExerciseName);
+    const currentExercise = resolvePlannedExerciseName(programId, currentExerciseName);
+    if (!allowOffCurrent && exerciseName && currentExercise) {
+      const requestedName = resolvedExercise || String(exerciseName).trim();
+      const matchesCurrent = normalizeName(requestedName) === normalizeName(currentExercise)
+        || nameSimilarity(normalizeName(exerciseName), normalizeName(currentExercise)) >= 0.68;
+      if (!matchesCurrent) {
+        throw new Error(`You are currently on ${currentExercise}. Did you mean to log ${requestedName} instead?`);
+      }
+    }
+    const cleanExerciseName = String(resolvedExercise || exerciseName || currentExerciseName || '').trim();
     const parsedReps = Number.parseInt(reps, 10);
     const parsedWeight = weight == null ? null : Number.parseFloat(weight);
 
@@ -451,6 +546,23 @@
       set: insertedSet.data,
       session: updatedSession.data,
     };
+  }
+
+  function resolvePlannedExerciseName(programId, exerciseName) {
+    const query = normalizeName(exerciseName);
+    if (!query) return null;
+    const detail = (programId && getProgramDetail(programId)) || window.PROGRAM_DETAIL || {};
+    const exercises = getDetailExercises(detail);
+    if (!exercises.length) return null;
+    const exact = exercises.find((exercise) => normalizeName(exercise.name) === query);
+    if (exact) return exact.name;
+    const scored = exercises
+      .map((exercise) => ({
+        name: exercise.name,
+        score: nameSimilarity(query, normalizeName(exercise.name)),
+      }))
+      .sort((left, right) => right.score - left.score)[0];
+    return scored && scored.score >= 0.68 ? scored.name : null;
   }
 
   async function loadPastWorkout(session, prs) {
@@ -656,6 +768,28 @@
     return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
+  function nameSimilarity(left, right) {
+    if (!left || !right) return 0;
+    if (left === right || left.includes(right) || right.includes(left)) return 1;
+    const compactLeft = left.replace(/\s+/g, '');
+    const compactRight = right.replace(/\s+/g, '');
+    if (compactLeft === compactRight || compactLeft.includes(compactRight) || compactRight.includes(compactLeft)) return 1;
+    const leftWords = new Set(left.split(' '));
+    const rightWords = right.split(' ');
+    const overlap = rightWords.filter((word) => leftWords.has(word)).length;
+    const tokenScore = overlap / Math.max(leftWords.size, rightWords.length, 1);
+    return Math.max(tokenScore, compactSimilarity(compactLeft, compactRight));
+  }
+
+  function compactSimilarity(left, right) {
+    if (!left || !right) return 0;
+    const leftPairs = new Set(Array.from({ length: Math.max(left.length - 1, 0) }, (_, index) => left.slice(index, index + 2)));
+    const rightPairs = Array.from({ length: Math.max(right.length - 1, 0) }, (_, index) => right.slice(index, index + 2));
+    if (!leftPairs.size || !rightPairs.length) return 0;
+    const overlap = rightPairs.filter((pair) => leftPairs.has(pair)).length;
+    return overlap / Math.max(leftPairs.size, rightPairs.length, 1);
+  }
+
   function getDetailDays(detail) {
     if (Array.isArray(detail.days)) return detail.days;
     return [];
@@ -758,5 +892,7 @@
     logWorkoutSet,
     selectPastWorkout,
     getProgramDetail,
+    upsertTrainarProgramCache,
+    removeTrainarProgramCache,
   });
 })();
