@@ -110,3 +110,10 @@ class AssistantAction(BaseModel):
         default=False,
         description="Whether the user asked to immediately start the newly created workout.",
     )
+    confirmed_off_current: bool = Field(
+        default=False,
+        description=(
+            "Internal flag set after the user confirms logging an exercise that "
+            "does not match the current workout step."
+        ),
+    )

@@ -18,6 +18,7 @@ const HudDemoScreen = ({
   const videoRef = React.useRef(null);
   const streamRef = React.useRef(null);
   const [cameraStatus, setCameraStatus] = React.useState('idle');
+  const [cameraError, setCameraError] = React.useState('');
   const [sourceMode, setSourceMode] = React.useState('mock');
   const [facingMode, setFacingMode] = React.useState('environment');
   const [now, setNow] = React.useState(() => Date.now());
@@ -34,6 +35,21 @@ const HudDemoScreen = ({
   });
 
   React.useEffect(() => {
+    document.documentElement.classList.add('trainar-hud-active');
+    document.body.classList.add('trainar-hud-active');
+    const root = document.getElementById('root');
+    if (root) root.classList.add('trainar-hud-active');
+    return () => {
+      document.documentElement.classList.remove('trainar-hud-active');
+      document.body.classList.remove('trainar-hud-active');
+      if (root) root.classList.remove('trainar-hud-active');
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (window.TRAINAR_NATIVE_APP && window.sendTrainARNativeCommand) {
+      window.sendTrainARNativeCommand('hudScreenActive');
+    }
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -44,17 +60,56 @@ const HudDemoScreen = ({
     return () => window.removeEventListener('trainar:hud-state', onHudState);
   }, []);
 
-  React.useEffect(() => () => stopHudCameraStream(streamRef), []);
+  React.useEffect(() => {
+    const onNativeCamera = (event) => {
+      const detail = event.detail || {};
+      if (detail.status === 'streaming') {
+        setSourceMode('native-camera');
+        setCameraStatus('streaming');
+        setCameraError('');
+        return;
+      }
+      if (detail.status === 'stopped') {
+        setCameraStatus('idle');
+        setSourceMode('mock');
+        return;
+      }
+      setCameraStatus(detail.status || 'failed');
+      setCameraError(detail.message || 'Native camera preview failed.');
+      setSourceMode('mock');
+    };
+    window.addEventListener('trainar:native-camera', onNativeCamera);
+    return () => window.removeEventListener('trainar:native-camera', onNativeCamera);
+  }, []);
+
+  React.useEffect(() => () => {
+    stopHudCameraStream(streamRef);
+    if (window.TRAINAR_NATIVE_APP && window.sendTrainARNativeCommand) {
+      window.sendTrainARNativeCommand('stopHudCamera');
+    }
+  }, []);
 
   const startCamera = React.useCallback(async (nextFacingMode = facingMode) => {
+    if (window.TRAINAR_NATIVE_APP && window.sendTrainARNativeCommand) {
+      stopHudCameraStream(streamRef);
+      setCameraStatus('starting');
+      setCameraError('');
+      window.sendTrainARNativeCommand('startHudCamera', { facingMode: nextFacingMode });
+      return;
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraStatus('unavailable');
+      setCameraError(window.isSecureContext === false
+        ? 'Camera API is blocked because this page is not a secure context.'
+        : 'Camera API is not exposed in this WebView/browser.');
       setSourceMode('mock');
       return;
     }
 
     stopHudCameraStream(streamRef);
     setCameraStatus('starting');
+    setCameraError('');
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -76,24 +131,46 @@ const HudDemoScreen = ({
     } catch (err) {
       console.warn('HUD camera preview unavailable:', err);
       setCameraStatus('failed');
+      setCameraError(err?.message || err?.name || 'Camera preview failed.');
       setSourceMode('mock');
     }
   }, [facingMode]);
 
+  React.useEffect(() => {
+    if (window.TRAINAR_NATIVE_APP && window.sendTrainARNativeCommand) {
+      window.setTimeout(() => startCamera('environment'), 250);
+    }
+  }, [startCamera]);
+
   const useMockSource = () => {
     stopHudCameraStream(streamRef);
+    if (window.TRAINAR_NATIVE_APP && window.sendTrainARNativeCommand) {
+      window.sendTrainARNativeCommand('stopHudCamera');
+    }
     setSourceMode('mock');
     setCameraStatus('idle');
+    setCameraError('');
   };
 
   const switchCamera = () => {
     const nextIndex = (HUD_DEMO_FACING_MODES.indexOf(facingMode) + 1) % HUD_DEMO_FACING_MODES.length;
+    setFacingMode(HUD_DEMO_FACING_MODES[nextIndex]);
+    if (sourceMode === 'native-camera' && window.sendTrainARNativeCommand) {
+      window.sendTrainARNativeCommand('switchHudCamera');
+      return;
+    }
     startCamera(HUD_DEMO_FACING_MODES[nextIndex]);
   };
 
   return (
-    <Screen padTop={0} padBottom={0} style={{ background: '#050605', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#050605' }}>
+    <Screen padTop={0} padBottom={0} style={{ background: sourceMode === 'native-camera' ? 'transparent' : '#050605', overflow: 'hidden' }}>
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        background: sourceMode === 'native-camera' ? 'transparent' : '#050605',
+        minHeight: '100dvh',
+      }}>
         {sourceMode === 'camera' ? (
           <video
             ref={videoRef}
@@ -110,6 +187,8 @@ const HudDemoScreen = ({
               background: '#050605',
             }}
           />
+        ) : sourceMode === 'native-camera' ? (
+          <div style={{ position: 'absolute', inset: 0, background: 'transparent' }} />
         ) : (
           <HudMockScene now={now} />
         )}
@@ -120,7 +199,7 @@ const HudDemoScreen = ({
 
       <div style={{
         position: 'absolute',
-        top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
+        top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
         left: 14,
         right: 14,
         display: 'flex',
@@ -151,10 +230,10 @@ const HudDemoScreen = ({
             width: 7,
             height: 7,
             borderRadius: 9999,
-            background: sourceMode === 'camera' ? '#c5f23e' : '#f5c542',
-            boxShadow: sourceMode === 'camera' ? '0 0 12px rgba(197,242,62,0.8)' : '0 0 12px rgba(245,197,66,0.7)',
+            background: (sourceMode === 'camera' || sourceMode === 'native-camera') ? '#c5f23e' : '#f5c542',
+            boxShadow: (sourceMode === 'camera' || sourceMode === 'native-camera') ? '0 0 12px rgba(197,242,62,0.8)' : '0 0 12px rgba(245,197,66,0.7)',
           }} />
-          {sourceMode === 'camera' ? 'Camera HUD' : 'Mock HUD'}
+          {(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'Camera HUD' : 'Mock HUD'}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {sourceMode === 'camera' && (
@@ -162,18 +241,23 @@ const HudDemoScreen = ({
               <Icon name="rotate" size={18} />
             </button>
           )}
+          {sourceMode === 'native-camera' && (
+            <button onClick={switchCamera} className="press" aria-label="Switch camera" style={hudIconButtonStyle()}>
+              <Icon name="rotate" size={18} />
+            </button>
+          )}
           <button
-            onClick={sourceMode === 'camera' ? useMockSource : () => startCamera()}
+            onClick={(sourceMode === 'camera' || sourceMode === 'native-camera') ? useMockSource : () => startCamera()}
             className="press"
-            aria-label={sourceMode === 'camera' ? 'Use mock source' : 'Start camera'}
+            aria-label={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'Use mock source' : 'Start camera'}
             style={hudIconButtonStyle()}
           >
-            <Icon name={sourceMode === 'camera' ? 'video' : 'camera'} size={18} />
+            <Icon name={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'video' : 'camera'} size={18} />
           </button>
         </div>
       </div>
 
-      {cameraStatus === 'failed' && (
+      {(cameraStatus === 'failed' || cameraStatus === 'unavailable') && (
         <div style={{
           position: 'absolute',
           left: 18,
@@ -190,7 +274,7 @@ const HudDemoScreen = ({
           backdropFilter: 'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
         }}>
-          Camera preview is unavailable here, so the HUD is using the mock feed.
+          {cameraError || 'Camera preview is unavailable here, so the HUD is using the mock feed.'}
         </div>
       )}
     </Screen>

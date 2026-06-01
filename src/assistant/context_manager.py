@@ -64,6 +64,29 @@ class CoachContextManager:
         records = app_context.get("personalRecords")
         sessions = app_context.get("recentSessions")
         glasses = app_context.get("glasses")
+        profile = app_context.get("trainingProfile")
+
+        if isinstance(profile, dict):
+            profile_parts = []
+            if profile.get("trainingGoal"):
+                profile_parts.append(f"goal {profile['trainingGoal']}")
+            if profile.get("trainingExperience"):
+                profile_parts.append(f"experience {profile['trainingExperience']}")
+            if profile.get("workoutDaysPerWeek"):
+                profile_parts.append(f"{profile['workoutDaysPerWeek']} days/week")
+            if profile.get("workoutSessionMinutes"):
+                profile_parts.append(f"{profile['workoutSessionMinutes']} min/session")
+            equipment = profile.get("availableEquipment")
+            if isinstance(equipment, list) and equipment:
+                profile_parts.append(f"equipment {', '.join(str(item) for item in equipment[:6])}")
+            if profile.get("coachStyle"):
+                profile_parts.append(f"coach style {profile['coachStyle']}")
+            if profile.get("evidencePreference"):
+                profile_parts.append(f"evidence preference {profile['evidencePreference']}")
+            if profile.get("movementConstraints"):
+                profile_parts.append(f"constraints {profile['movementConstraints']}")
+            if profile_parts:
+                lines.append(f"- Training profile: {'; '.join(profile_parts)}.")
 
         if isinstance(current_workout, dict):
             title = current_workout.get("title") or current_workout.get("programName") or "active workout"

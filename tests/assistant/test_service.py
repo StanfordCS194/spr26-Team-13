@@ -1,4 +1,5 @@
 from src.assistant.service import handle_message, parse_user_message
+from src.assistant.chat_route import _action_from_pending_log_confirmation
 from src.assistant.models import AssistantAction
 from src.assistant.supabase_tools import (
     _advance_from_current_step,
@@ -29,6 +30,18 @@ def test_handle_message_gets_squat_pr_with_local_fallback(monkeypatch):
     assert payload["response"] == "Your back squat PR is 315 pounds for 2 reps."
     assert payload["action"]["action"] == "get_pr"
     assert payload["action"]["exercise_name"] == "back squat"
+
+
+def test_handle_message_styles_deterministic_reply(monkeypatch):
+    monkeypatch.setattr("src.assistant.service.build_openai_client", lambda: None)
+
+    payload = handle_message(
+        "Rest 90 seconds",
+        context={"trainingProfile": {"coachStyle": "high_energy"}},
+    )
+
+    assert payload["response"] == "Starting a 90-second rest. Breathe, then attack the next set."
+    assert payload["action"]["action"] == "start_rest"
 
 
 def test_handle_message_reads_pr_from_context(monkeypatch):
@@ -434,6 +447,104 @@ def test_log_set_asks_before_logging_unplanned_off_current_exercise():
     assert result["action_result"]["needs_confirmation"] is True
     assert result["action_result"]["requested_exercise"] == "backquats"
     assert "You are currently on Hammer Curl" in result["message"]
+
+
+def test_log_set_confirmed_off_current_logs_and_preserves_current_step():
+    class FakeClient:
+        def __init__(self):
+            self.inserted_logs = []
+
+        def select(self, table, params):
+            if table == "program_days":
+                return [{"id": "day-1"}]
+            if table == "program_blocks":
+                return [{"id": "block-1", "day_id": "day-1", "block_number": 1}]
+            if table == "program_exercises":
+                return [
+                    {"id": "exercise-1", "block_id": "block-1", "exercise_number": 1, "exercise_name": "Hammer Curl", "set_count": 3},
+                ]
+            if table == "workout_exercise_logs":
+                return []
+            if table == "workout_sets":
+                return []
+            if table == "workout_sessions":
+                return [{"id": "session-1", "total_sets": 0, "total_volume": 0}]
+            return []
+
+        def insert(self, table, payload):
+            if table == "workout_exercise_logs":
+                row = {"id": "log-1", **payload}
+                self.inserted_logs.append(row)
+                return row
+            if table == "workout_sets":
+                return {"id": "set-1", **payload}
+            raise AssertionError(table)
+
+        def update(self, table, filters, payload):
+            return {"id": "session-1", **payload}
+
+    client = FakeClient()
+    result = _log_set(
+        client,
+        AssistantAction(
+            action="log_set",
+            exercise_name="backquats",
+            reps=5,
+            weight=225,
+            confirmed_off_current=True,
+        ),
+        context={
+            "activeProgramId": "program-1",
+            "currentWorkout": {
+                "sessionId": "session-1",
+                "step": {"exerciseName": "Hammer Curl", "setNumber": 2, "setCount": 3},
+            },
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["ui_patch"]["loggedSet"]["exerciseName"] == "backquats"
+    assert result["ui_patch"]["step"]["exerciseName"] == "Hammer Curl"
+    assert result["ui_patch"]["step"]["setNumber"] == 2
+    assert client.inserted_logs[0]["exercise_name"] == "backquats"
+
+
+def test_pending_log_confirmation_yes_replays_confirmed_log_action():
+    action = _action_from_pending_log_confirmation(
+        "yes log it",
+        {
+            "pendingLogConfirmation": {
+                "sessionId": "session-1",
+                "exerciseName": "Back Squat",
+                "reps": 5,
+                "weight": 225,
+            },
+        },
+    )
+
+    assert action is not None
+    assert action.action == "log_set"
+    assert action.exercise_name == "Back Squat"
+    assert action.reps == 5
+    assert action.weight == 225
+    assert action.confirmed_off_current is True
+
+
+def test_pending_log_confirmation_no_clears_without_logging():
+    action = _action_from_pending_log_confirmation(
+        "no cancel that",
+        {
+            "pendingLogConfirmation": {
+                "sessionId": "session-1",
+                "exerciseName": "Back Squat",
+                "reps": 5,
+                "weight": 225,
+            },
+        },
+    )
+
+    assert action is not None
+    assert action.action == "unknown"
 
 
 def test_log_set_advances_from_current_step_not_existing_logs():

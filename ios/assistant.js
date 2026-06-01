@@ -36,6 +36,7 @@
       action: payload.action || null,
       actionResult: payload.action_result || null,
       uiPatch: payload.ui_patch || null,
+      sources: payload.sources || [],
       mode: payload.mode || 'chat',
       clientTurnId: options.clientTurnId || null,
     };
@@ -84,7 +85,9 @@
     return {
       activeProgramId,
       activeProgram,
+      trainingProfile: window.TRAINAR_TRAINING_PROFILE || null,
       currentWorkout: options.currentWorkout || null,
+      pendingLogConfirmation: options.pendingLogConfirmation || null,
       programs: (window.PROGRAMS || []).slice(0, 10),
       programDetail: window.PROGRAM_DETAIL || null,
       recentSessions: (window.TRAINAR_SESSIONS || []).slice(0, 20),

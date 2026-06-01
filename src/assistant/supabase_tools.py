@@ -20,6 +20,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
+from src.assistant.coach_style import style_prompt_from_context
+from src.assistant.evidence import format_evidence_context, retrieve_evidence
 from src.assistant.models import AssistantAction
 from src.assistant.tools import normalize_exercise_name
 
@@ -578,17 +580,25 @@ def _generate_workout_plan(goal: str, *, context: dict[str, Any] | None) -> Gene
         return _fallback_generated_workout_plan(goal)
 
     context_summary = _workout_generation_context(context)
+    profile = context.get("trainingProfile") if isinstance(context, dict) else None
+    evidence_context = format_evidence_context(
+        retrieve_evidence(goal, profile=profile if isinstance(profile, dict) else None)
+    )
     instructions = (
         "Create a practical workout plan for the TrainAR app. Return only the "
         "structured plan. Keep it realistic for one user to perform in a gym or "
         "home setting based on the request. Prefer 4-7 exercises per day, clear "
         "set counts, rep targets, load targets, and rest times. If the user asks "
         "for one workout, create one day. If they ask for multiple days, create "
-        "that many days. Do not include medical claims."
+        "that many days. Use the user's training profile and the evidence notes "
+        "when available, but do not include medical claims."
     )
     input_text = f"User request: {goal}"
     if context_summary:
         input_text += f"\n\nAvailable user context:\n{context_summary}"
+        input_text += f"\n\nCoach style rules:\n{style_prompt_from_context(context)}"
+    if evidence_context:
+        input_text += f"\n\nRelevant peer-reviewed evidence notes:\n{evidence_context}"
 
     try:
         response = client.responses.parse(
@@ -934,6 +944,26 @@ def _workout_generation_context(context: dict[str, Any] | None) -> str:
         return ""
 
     lines: list[str] = []
+    profile = context.get("trainingProfile")
+    if isinstance(profile, dict):
+        profile_lines = []
+        mapping = [
+            ("trainingGoal", "goal"),
+            ("trainingExperience", "experience"),
+            ("workoutDaysPerWeek", "days per week"),
+            ("workoutSessionMinutes", "minutes per workout"),
+            ("coachStyle", "coach style"),
+            ("movementConstraints", "movement constraints"),
+        ]
+        for key, label in mapping:
+            if profile.get(key):
+                profile_lines.append(f"{label}: {profile[key]}")
+        equipment = profile.get("availableEquipment")
+        if isinstance(equipment, list) and equipment:
+            profile_lines.append(f"equipment: {', '.join(str(item) for item in equipment)}")
+        if profile_lines:
+            lines.append(f"Training profile: {'; '.join(profile_lines)}")
+
     records = context.get("personalRecords")
     if isinstance(records, list) and records:
         prs = []
@@ -1186,7 +1216,12 @@ def _log_set(client: SupabaseRestClient, action: AssistantAction, *, context: di
     ) if current_step else None
 
     current_step_name = _current_step_name(context)
-    if requested_exercise_name and current_step_name and not _names_compatible(requested_exercise_name, current_step_name):
+    if (
+        not action.confirmed_off_current
+        and requested_exercise_name
+        and current_step_name
+        and not _names_compatible(requested_exercise_name, current_step_name)
+    ):
         current_name = (current_exercise or {}).get("exercise_name") or current_step_name
         planned_name = (program_exercise or {}).get("exercise_name") or exercise_name
         return {
@@ -1202,7 +1237,7 @@ def _log_set(client: SupabaseRestClient, action: AssistantAction, *, context: di
             "ui_patch": None,
         }
 
-    if requested_exercise_name and current_exercise:
+    if not action.confirmed_off_current and requested_exercise_name and current_exercise:
         requested_id = str((program_exercise or {}).get("id") or "")
         current_id = str(current_exercise.get("id") or "")
         requested_matches_current = (

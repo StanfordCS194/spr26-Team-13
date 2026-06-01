@@ -412,6 +412,48 @@
     return session;
   }
 
+  async function deleteWorkoutSession(sessionId) {
+    if (!sessionId) throw new Error('No workout selected to delete.');
+
+    const logsRes = await client()
+      .from('workout_exercise_logs')
+      .select('id')
+      .eq('session_id', sessionId);
+    throwIfError(logsRes.error);
+
+    const logIds = (logsRes.data || []).map((log) => log.id);
+    if (logIds.length) {
+      const setsDeleteRes = await client()
+        .from('workout_sets')
+        .delete()
+        .in('exercise_log_id', logIds);
+      throwIfError(setsDeleteRes.error);
+
+      const logsDeleteRes = await client()
+        .from('workout_exercise_logs')
+        .delete()
+        .in('id', logIds);
+      throwIfError(logsDeleteRes.error);
+    }
+
+    const sessionDeleteRes = await client()
+      .from('workout_sessions')
+      .delete()
+      .eq('id', sessionId);
+    throwIfError(sessionDeleteRes.error);
+
+    window.TRAINAR_SESSIONS = (window.TRAINAR_SESSIONS || []).filter((session) => session.id !== sessionId);
+    window.HISTORY = (window.HISTORY || []).filter((session) => session.id !== sessionId);
+    if (window.PAST_WORKOUT?.id === sessionId) {
+      window.PAST_WORKOUT = null;
+    }
+
+    const { data: authData } = await client().auth.getUser();
+    if (authData.user) await loadTrainarData(authData.user.id);
+    emitDataChange();
+    return sessionId;
+  }
+
   async function loadSessionTotals(sessionId) {
     const sessionRes = await client()
       .from('workout_sessions')
@@ -889,6 +931,7 @@
     pairDemoDevice,
     startWorkout,
     finishWorkout,
+    deleteWorkoutSession,
     logWorkoutSet,
     selectPastWorkout,
     getProgramDetail,
