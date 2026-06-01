@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 from src.assistant.models import AssistantAction
 from src.assistant.prompts import SYSTEM_PROMPT
+from src.assistant.coach_style import style_action_reply
 from src.assistant import tools
 
 if load_dotenv is not None:
@@ -83,8 +84,9 @@ def handle_action(action: AssistantAction, *, context: dict[str, Any] | None = N
     """Execute a parsed assistant action and format the response payload."""
 
     result = _execute_action(action, context=context)
+    response = _format_response(action, result, context=context)
     return {
-        "response": _format_response(action, result, context=context),
+        "response": style_action_reply(response, context, action_name=action.action) if result.get("ok") else response,
         "action": action.model_dump(mode="json"),
     }
 

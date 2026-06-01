@@ -37,8 +37,11 @@ Use optional fields only when the user provided or clearly implied them:
 - workout_query_type
 - workout_goal
 - start_immediately
+- confirmed_off_current
 
 Do not invent unsupported fields.
+Do not set confirmed_off_current from user speech; it is reserved for internal
+confirmation replay by the app backend.
 Do not store workout state.
 Do not claim that an action was completed.
 Use advance_set when the user asks to move to the next set or next exercise

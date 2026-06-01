@@ -5,7 +5,7 @@
 // when those wire up to a real backend they'll just need data sources, not
 // shape changes.
 
-const ProfileScreen = ({ user, glassesState = {} }) => {
+const ProfileScreen = ({ user, glassesState = {}, onEditTraining }) => {
   // Backend friend can pass in `user` directly, or we fall back to whatever
   // useAuth has stashed in localStorage.
   const fallback = (() => {
@@ -25,6 +25,8 @@ const ProfileScreen = ({ user, glassesState = {} }) => {
   const displayBattery = glassesState.battery || device?.battery_percent || 78;
   const displayName = glassesState.deviceName || device?.name || 'Mock Ray-Ban Meta';
   const isNativeBridge = Boolean(window.TRAINAR_NATIVE_APP);
+  const training = u.trainingProfile || window.TRAINAR_TRAINING_PROFILE || {};
+  const equipment = Array.isArray(training.availableEquipment) ? training.availableEquipment : [];
 
   const sendMockCommand = (type, payload = {}) => {
     if (window.sendTrainARNativeCommand && window.sendTrainARNativeCommand(type, payload)) return;
@@ -86,6 +88,46 @@ const ProfileScreen = ({ user, glassesState = {} }) => {
                 <Pill>Member · Apr 2026</Pill>
               </div>
             </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Training profile. */}
+      <div style={{ padding: '0 20px 14px' }}>
+        <div style={{
+          fontSize: 13, fontWeight: 600, color: 'var(--text-2)',
+          marginBottom: 10, padding: '0 4px',
+        }}>Training profile</div>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, textTransform: 'capitalize' }}>
+                {String(training.trainingGoal || 'Not set').replace('_', ' ')}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4, lineHeight: 1.35 }}>
+                {training.workoutDaysPerWeek || '-'} days/week · {training.workoutSessionMinutes || '-'} min · {training.trainingExperience || 'experience not set'}
+              </div>
+            </div>
+            <button
+              onClick={onEditTraining}
+              className="press"
+              style={{
+                width: 36, height: 36, borderRadius: 9999,
+                background: 'var(--surface-2)', border: '1px solid var(--hairline)',
+                color: 'var(--text-1)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              aria-label="Edit training profile"
+            ><Icon name="edit" size={15} /></button>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
+            <Pill>{String(training.coachStyle || 'direct').replace('_', ' ')}</Pill>
+            <Pill>{String(training.evidencePreference || 'concise')} evidence</Pill>
+            {equipment.slice(0, 4).map((item) => (
+              <Pill key={item}>{String(item).replace('_', ' ')}</Pill>
+            ))}
           </div>
         </Card>
       </div>

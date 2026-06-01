@@ -20,6 +20,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
+from src.assistant.coach_style import style_prompt_from_context
+from src.assistant.evidence import format_evidence_context, retrieve_evidence
 from src.assistant.models import AssistantAction
 from src.assistant.tools import normalize_exercise_name
 
@@ -511,6 +513,7 @@ def _build_workout(
     goal = action.workout_goal or "Build a balanced strength workout."
     plan = _generate_workout_plan(goal, context=context)
     program = _save_generated_workout_plan(client, user_id=user_id, plan=plan)
+    program_detail = _program_detail_payload(client, program)
     first_day = _program_days(client, str(program["id"]))[0] if program.get("id") else None
     first_step = _first_program_step(
         client,
@@ -522,6 +525,8 @@ def _build_workout(
         "type": "program_created",
         "programId": program.get("id"),
         "programName": program.get("title") or plan.title,
+        "program": _program_list_payload(program, program_detail),
+        "detail": program_detail,
         "day": _day_payload(first_day),
         "step": first_step,
     }
@@ -544,6 +549,8 @@ def _build_workout(
             "type": "workout_started",
             "sessionId": session.get("id"),
             "programId": program.get("id"),
+            "program": _program_list_payload(program, program_detail),
+            "detail": program_detail,
             "day": _day_payload(first_day),
             "step": first_step,
             "createdProgram": {
@@ -573,17 +580,25 @@ def _generate_workout_plan(goal: str, *, context: dict[str, Any] | None) -> Gene
         return _fallback_generated_workout_plan(goal)
 
     context_summary = _workout_generation_context(context)
+    profile = context.get("trainingProfile") if isinstance(context, dict) else None
+    evidence_context = format_evidence_context(
+        retrieve_evidence(goal, profile=profile if isinstance(profile, dict) else None)
+    )
     instructions = (
         "Create a practical workout plan for the TrainAR app. Return only the "
         "structured plan. Keep it realistic for one user to perform in a gym or "
         "home setting based on the request. Prefer 4-7 exercises per day, clear "
         "set counts, rep targets, load targets, and rest times. If the user asks "
         "for one workout, create one day. If they ask for multiple days, create "
-        "that many days. Do not include medical claims."
+        "that many days. Use the user's training profile and the evidence notes "
+        "when available, but do not include medical claims."
     )
     input_text = f"User request: {goal}"
     if context_summary:
         input_text += f"\n\nAvailable user context:\n{context_summary}"
+        input_text += f"\n\nCoach style rules:\n{style_prompt_from_context(context)}"
+    if evidence_context:
+        input_text += f"\n\nRelevant peer-reviewed evidence notes:\n{evidence_context}"
 
     try:
         response = client.responses.parse(
@@ -678,6 +693,134 @@ def _save_generated_workout_plan(
                 )
 
     return program
+
+
+def _program_list_payload(program: dict[str, Any], detail: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "id": program.get("id"),
+        "name": program.get("title"),
+        "author": program.get("author") or "Imported",
+        "weeks": program.get("weeks") or 0,
+        "daysPerWeek": program.get("days_per_week") or (detail or {}).get("dayCount") or 0,
+        "type": program.get("kind") or program.get("source_type") or "Program",
+        "color": program.get("color") or "#C5F23E",
+        "sourceLabel": program.get("source_label") or "Imported",
+        "activeWeek": program.get("active_week") or 1,
+        "progress": float(program.get("progress") or 0),
+        "description": program.get("description") or "",
+    }
+
+
+def _program_detail_payload(client: SupabaseRestClient, program: dict[str, Any]) -> dict[str, Any]:
+    program_id = str(program.get("id") or "")
+    days = _program_days(client, program_id) if program_id else []
+    day_ids = [str(day["id"]) for day in days if day.get("id")]
+
+    blocks = client.select(
+        "program_blocks",
+        {
+            "select": "id,day_id,block_number,title,execution_style",
+            "day_id": _in_filter(day_ids),
+            "order": "block_number",
+        },
+    ) if day_ids else []
+    block_ids = [str(block["id"]) for block in blocks if block.get("id")]
+
+    exercises = client.select(
+        "program_exercises",
+        {
+            "select": "id,block_id,exercise_number,exercise_name,set_count,rep_target,load_target,rest_seconds,notes,ambiguity_flags",
+            "block_id": _in_filter(block_ids),
+            "order": "exercise_number",
+        },
+    ) if block_ids else []
+
+    blocks_by_day: dict[str, list[dict[str, Any]]] = {}
+    for block in blocks:
+        blocks_by_day.setdefault(str(block.get("day_id")), []).append(block)
+
+    exercises_by_block: dict[str, list[dict[str, Any]]] = {}
+    for exercise in exercises:
+        exercises_by_block.setdefault(str(exercise.get("block_id")), []).append(exercise)
+
+    detail_days = []
+    for day in days:
+        day_blocks = []
+        for block in blocks_by_day.get(str(day.get("id")), []):
+            day_blocks.append(
+                {
+                    "id": block.get("id"),
+                    "title": block.get("title"),
+                    "executionStyle": block.get("execution_style"),
+                    "exercises": [
+                        _exercise_detail_payload(exercise)
+                        for exercise in exercises_by_block.get(str(block.get("id")), [])
+                    ],
+                }
+            )
+        detail_days.append(
+            {
+                "id": day.get("id"),
+                "title": day.get("title"),
+                "weekNumber": day.get("week_number"),
+                "dayNumber": day.get("day_number"),
+                "blocks": day_blocks,
+            }
+        )
+
+    flat_exercises = [
+        exercise
+        for day in detail_days
+        for block in day.get("blocks", [])
+        for exercise in block.get("exercises", [])
+    ]
+    return {
+        "programId": program.get("id"),
+        "name": program.get("title"),
+        "sourceType": program.get("source_type"),
+        "confidence": program.get("parse_confidence"),
+        "dayCount": len(detail_days),
+        "weeks": program.get("weeks"),
+        "totalSets": sum(_payload_set_count(exercise.get("sets")) for exercise in flat_exercises),
+        "days": detail_days,
+        "exercises": flat_exercises,
+        "canonical": program.get("canonical") or {},
+    }
+
+
+def _exercise_detail_payload(exercise: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": exercise.get("id"),
+        "name": exercise.get("exercise_name"),
+        "sets": exercise.get("set_count") if exercise.get("set_count") is not None else "-",
+        "reps": exercise.get("rep_target") or "-",
+        "load": exercise.get("load_target") or "-",
+        "rest": _format_rest_payload(exercise.get("rest_seconds")),
+        "note": " - ".join(
+            str(part)
+            for part in [exercise.get("notes"), *(exercise.get("ambiguity_flags") or [])]
+            if part
+        ),
+    }
+
+
+def _payload_set_count(value: Any) -> int:
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _format_rest_payload(seconds: Any) -> str:
+    try:
+        value = int(seconds)
+    except (TypeError, ValueError):
+        return "-"
+    if value <= 0:
+        return "-"
+    if value % 60 == 0:
+        return f"{value // 60} min"
+    return f"{value} sec"
 
 
 def _normalize_generated_workout_plan(plan: GeneratedWorkoutPlan) -> GeneratedWorkoutPlan:
@@ -801,6 +944,26 @@ def _workout_generation_context(context: dict[str, Any] | None) -> str:
         return ""
 
     lines: list[str] = []
+    profile = context.get("trainingProfile")
+    if isinstance(profile, dict):
+        profile_lines = []
+        mapping = [
+            ("trainingGoal", "goal"),
+            ("trainingExperience", "experience"),
+            ("workoutDaysPerWeek", "days per week"),
+            ("workoutSessionMinutes", "minutes per workout"),
+            ("coachStyle", "coach style"),
+            ("movementConstraints", "movement constraints"),
+        ]
+        for key, label in mapping:
+            if profile.get(key):
+                profile_lines.append(f"{label}: {profile[key]}")
+        equipment = profile.get("availableEquipment")
+        if isinstance(equipment, list) and equipment:
+            profile_lines.append(f"equipment: {', '.join(str(item) for item in equipment)}")
+        if profile_lines:
+            lines.append(f"Training profile: {'; '.join(profile_lines)}")
+
     records = context.get("personalRecords")
     if isinstance(records, list) and records:
         prs = []
@@ -1031,7 +1194,8 @@ def _query_last_workout_set(
 
 def _log_set(client: SupabaseRestClient, action: AssistantAction, *, context: dict[str, Any] | None) -> dict[str, Any]:
     session_id = _current_session_id(context)
-    exercise_name = action.exercise_name
+    requested_exercise_name = action.exercise_name
+    exercise_name = requested_exercise_name or _current_step_name(context)
     if not session_id:
         return {"ok": False, "message": "Start a workout before logging sets.", "action_result": None, "ui_patch": None}
     if not exercise_name or action.reps is None:
@@ -1043,6 +1207,63 @@ def _log_set(client: SupabaseRestClient, action: AssistantAction, *, context: di
         }
 
     program_exercise = _find_program_exercise(client, _active_program_id(context), exercise_name, day_id=_active_day_id(context))
+    current_step = _current_step(context)
+    current_exercise = _find_program_exercise(
+        client,
+        _active_program_id(context),
+        _current_step_name(context),
+        day_id=_active_day_id(context),
+    ) if current_step else None
+
+    current_step_name = _current_step_name(context)
+    if (
+        not action.confirmed_off_current
+        and requested_exercise_name
+        and current_step_name
+        and not _names_compatible(requested_exercise_name, current_step_name)
+    ):
+        current_name = (current_exercise or {}).get("exercise_name") or current_step_name
+        planned_name = (program_exercise or {}).get("exercise_name") or exercise_name
+        return {
+            "ok": False,
+            "message": f"You are currently on {current_name}. Did you mean to log {planned_name} instead?",
+            "action_result": {
+                "requested_exercise": planned_name,
+                "current_exercise": current_name,
+                "reps": action.reps,
+                "weight": action.weight,
+                "needs_confirmation": True,
+            },
+            "ui_patch": None,
+        }
+
+    if not action.confirmed_off_current and requested_exercise_name and current_exercise:
+        requested_id = str((program_exercise or {}).get("id") or "")
+        current_id = str(current_exercise.get("id") or "")
+        requested_matches_current = (
+            requested_id
+            and current_id
+            and requested_id == current_id
+        ) or _names_compatible(requested_exercise_name, str(current_exercise.get("exercise_name") or ""))
+        if not requested_matches_current:
+            current_name = current_exercise.get("exercise_name") or _current_step_name(context) or "the current exercise"
+            planned_name = (program_exercise or {}).get("exercise_name") or exercise_name
+            return {
+                "ok": False,
+                "message": f"You are currently on {current_name}. Did you mean to log {planned_name} instead?",
+                "action_result": {
+                    "requested_exercise": planned_name,
+                    "current_exercise": current_name,
+                    "reps": action.reps,
+                    "weight": action.weight,
+                    "needs_confirmation": True,
+                },
+                "ui_patch": None,
+            }
+
+    if program_exercise:
+        exercise_name = str(program_exercise.get("exercise_name") or exercise_name)
+
     log = _get_or_create_exercise_log(
         client,
         session_id=session_id,
@@ -1076,6 +1297,15 @@ def _log_set(client: SupabaseRestClient, action: AssistantAction, *, context: di
     if action.weight is not None:
         message += f" at {_format_number(action.weight)} pounds"
     message += "."
+    next_step = _step_after_logged_set(
+        client,
+        session_id=session_id,
+        program_id=_active_program_id(context),
+        day_id=_active_day_id(context),
+        logged_exercise_name=exercise_name,
+        context=context,
+        action=action,
+    )
     return {
         "ok": True,
         "message": message,
@@ -1085,16 +1315,42 @@ def _log_set(client: SupabaseRestClient, action: AssistantAction, *, context: di
             "sessionId": session_id,
             "exerciseName": exercise_name,
             "setNumber": set_number,
-            "step": _next_workout_step(
-                client,
-                session_id=session_id,
-                program_id=_active_program_id(context),
-                day_id=_active_day_id(context),
-                action=action,
-                context=context,
-            ),
+            "loggedSet": {
+                "exerciseName": exercise_name,
+                "setNumber": set_number,
+                "reps": action.reps,
+                "weight": action.weight,
+            },
+            "step": next_step,
         },
     }
+
+
+def _step_after_logged_set(
+    client: SupabaseRestClient,
+    *,
+    session_id: str,
+    program_id: str | None,
+    day_id: str | None,
+    logged_exercise_name: str,
+    context: dict[str, Any] | None,
+    action: AssistantAction,
+) -> dict[str, Any] | None:
+    current_step = _current_step(context)
+    current_name = _current_step_name(context)
+    if current_step and current_name:
+        if _names_compatible(logged_exercise_name, current_name):
+            return _advance_from_current_step(current_step, _program_exercises(client, program_id, day_id=day_id))
+        return current_step
+
+    return _next_workout_step(
+        client,
+        session_id=session_id,
+        program_id=program_id,
+        day_id=day_id,
+        action=action,
+        context=context,
+    )
 
 
 def _get_or_create_exercise_log(
@@ -1114,7 +1370,14 @@ def _get_or_create_exercise_log(
     )
     normalized = _normalize_name(exercise_name)
     for log in logs:
-        if _normalize_name(str(log.get("exercise_name") or "")) == normalized:
+        if (
+            _normalize_name(str(log.get("exercise_name") or "")) == normalized
+            or (
+                program_exercise
+                and log.get("program_exercise_id")
+                and str(log.get("program_exercise_id")) == str(program_exercise.get("id"))
+            )
+        ):
             return log
 
     next_number = max([int(log.get("exercise_number") or 0) for log in logs] or [0]) + 1

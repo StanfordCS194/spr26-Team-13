@@ -2,8 +2,24 @@
 // or when tapping a previous session from the calendar / history tab.
 // Reads from window.PAST_WORKOUT.
 
-const PastWorkoutScreen = ({ workout, onBack }) => {
+const PastWorkoutScreen = ({ workout, onBack, onDelete }) => {
   const w = workout || window.PAST_WORKOUT || {};
+  const [deleting, setDeleting] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  const deleteWorkout = async () => {
+    if (!w.id || !onDelete || deleting) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await onDelete(w.id);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <Screen padTop={56} padBottom={40}>
@@ -18,13 +34,51 @@ const PastWorkoutScreen = ({ workout, onBack }) => {
           color: 'var(--text-1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}><Icon name="arrow-left" size={16} /></button>
-        <button className="press" style={{
-          height: 36, padding: '0 14px', borderRadius: 9999,
-          background: 'var(--surface-1)', border: '1px solid var(--hairline)',
-          color: 'var(--text-1)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-          fontFamily: 'var(--font-sans)',
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}><Icon name="upload" size={14} /> Export</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {w.id && onDelete && confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              className="press"
+              style={{
+                height: 36, padding: '0 12px', borderRadius: 9999,
+                background: 'var(--surface-1)', border: '1px solid var(--hairline)',
+                color: 'var(--text-2)', cursor: deleting ? 'not-allowed' : 'pointer',
+                fontSize: 12, fontWeight: 650, fontFamily: 'var(--font-sans)',
+              }}
+            >
+              Cancel
+            </button>
+          )}
+          {w.id && onDelete && (
+            <button
+              onClick={deleteWorkout}
+              disabled={deleting}
+              className="press"
+              aria-label={confirmDelete ? 'Confirm delete workout' : 'Delete workout'}
+              style={{
+                height: 36,
+                width: confirmDelete ? 'auto' : 36,
+                padding: confirmDelete ? '0 12px' : 0,
+                borderRadius: 9999,
+                background: 'rgba(255,82,82,0.1)', border: '1px solid rgba(255,82,82,0.28)',
+                color: '#ff8a8a', cursor: deleting ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                opacity: deleting ? 0.55 : 1,
+                fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)',
+              }}
+            >
+              {confirmDelete ? (deleting ? 'Deleting' : 'Delete') : <Icon name="trash" size={15} />}
+            </button>
+          )}
+          <button className="press" style={{
+            height: 36, padding: '0 14px', borderRadius: 9999,
+            background: 'var(--surface-1)', border: '1px solid var(--hairline)',
+            color: 'var(--text-1)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+            fontFamily: 'var(--font-sans)',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}><Icon name="upload" size={14} /> Export</button>
+        </div>
       </div>
 
       {/* Title + auto-tracked badge. */}
