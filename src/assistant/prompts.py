@@ -17,6 +17,8 @@ Only use one of these supported actions:
 - finish_exercise
 - query_workout
 - finish_workout
+- read_program_workout
+- query_program_history
 - unknown
 
 Use optional fields only when the user provided or clearly implied them:
@@ -66,5 +68,12 @@ Use query_history for flexible workout-history questions that ask for computed
 facts from sets, such as most reps, heaviest set, most volume, last time done,
 or filters like "with 200 pounds or more". Set history_metric to max_reps,
 max_weight, max_volume, last_time, or recent_sets.
+Use read_program_workout when the user asks what is on the program for today,
+this week, a specific day number, or a specific week. Populate week_number and
+day_number when the user names them (e.g. "week 3 day 2"). Leave them null to
+mean the current session.
+Use query_program_history when the user asks what weight or reps they did for a
+specific exercise in a past week or session, e.g. "what did I bench last week?"
+or "how much did I squat in week 2?". Populate exercise_name and week_number.
 If the request is not supported or is ambiguous, return unknown.
 """

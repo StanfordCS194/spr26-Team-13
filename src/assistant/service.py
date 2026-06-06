@@ -119,6 +119,10 @@ def _execute_action(action: AssistantAction, *, context: dict[str, Any] | None =
         return _answer_live_workout_from_context(action, context=context)
     if action.action == "finish_workout":
         return tools.finish_workout()
+    if action.action == "read_program_workout":
+        return tools.read_program_workout(action.week_number, action.day_number)
+    if action.action == "query_program_history":
+        return tools.query_program_history(action.exercise_name)
     if context:
         return _answer_from_context(context)
     return {
@@ -165,6 +169,8 @@ def _format_response(
         return str(result.get("message") or "I can help with that workout.")
     if action.action == "finish_workout":
         return "Workout finished."
+    if action.action in {"read_program_workout", "query_program_history"}:
+        return str(result.get("message") or "Here is what I found in your program.")
     return "I can help with that once the action is supported."
 
 

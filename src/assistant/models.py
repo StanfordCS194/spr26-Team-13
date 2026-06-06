@@ -21,6 +21,8 @@ AssistantActionName = Literal[
     "finish_exercise",
     "query_workout",
     "finish_workout",
+    "read_program_workout",
+    "query_program_history",
     "unknown",
 ]
 
