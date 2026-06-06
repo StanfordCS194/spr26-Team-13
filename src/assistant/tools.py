@@ -9,17 +9,22 @@ from typing import Any
 from src.assistant.mock_db import EXERCISE_ALIASES, LOGGED_SETS, PERSONAL_RECORDS, WORKOUT_STATE
 
 
+_tracker_cache: dict[str, object] = {}
+
+
 def _get_tracker():
-    """Return a shared ExcelTracker instance if a program file is configured."""
+    """Return a cached ExcelTracker instance, parsing the file only once per process."""
     from src.app.excel_tracker import ExcelTracker
 
     path = os.getenv("PROGRAM_XLSX_PATH") or str(Path("programs/Phase3.xlsx"))
     if not Path(path).exists():
         return None
-    try:
-        return ExcelTracker(path)
-    except Exception:
-        return None
+    if path not in _tracker_cache:
+        try:
+            _tracker_cache[path] = ExcelTracker(path)
+        except Exception:
+            return None
+    return _tracker_cache[path]
 
 
 def normalize_exercise_name(exercise_name: str | None) -> str | None:
