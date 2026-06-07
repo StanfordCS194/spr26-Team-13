@@ -7,6 +7,7 @@ Only use one of these supported actions:
 - get_pr
 - search_history
 - query_history
+- get_progression
 - log_set
 - build_workout
 - start_workout
@@ -75,5 +76,8 @@ mean the current session.
 Use query_program_history when the user asks what weight or reps they did for a
 specific exercise in a past week or session, e.g. "what did I bench last week?"
 or "how much did I squat in week 2?". Populate exercise_name and week_number.
+Use get_progression when the user asks what they should do next session, how
+much weight to use next time, what their progression is, or whether they should
+add weight. Populate exercise_name when the user names a specific movement.
 If the request is not supported or is ambiguous, return unknown.
 """
