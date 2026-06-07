@@ -26,7 +26,7 @@
       throw new Error(payload.error || 'Coach assistant failed.');
     }
 
-    // Normalize on `response` so existing listeners (CoachOverlay, wake-word
+    // Normalize on `response` so existing listeners (CoachCapsule, wake-word
     // border reset) keep working unchanged.
     const reply = String(payload.reply || '').trim();
     const expectsFollowUp = looksLikeQuestion(reply);

@@ -31,19 +31,14 @@ const SplashScreen = ({ onSignUp, onSignIn }) => (
       background: 'radial-gradient(120% 80% at 50% 30%, rgba(197,242,62,0.18), transparent 60%)',
       paddingTop: 80,
     }}>
-      {/* Glasses visor — pure CSS */}
-      <div style={{ width: 220, height: 110, position: 'relative', marginBottom: 56 }}>
-        <div style={{
-          position: 'absolute', inset: 0, borderRadius: '50%',
-          border: '1.5px solid var(--accent)',
-          boxShadow: '0 0 60px rgba(197,242,62,0.4), inset 0 0 30px rgba(197,242,62,0.15)',
-          background: 'linear-gradient(180deg, rgba(197,242,62,0.08), transparent 60%)',
-        }} />
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: 3,
-          color: 'rgba(197,242,62,0.7)',
-        }}>TRAIN.AR</div>
+      {/* Landing symbol — glasses mark */}
+      <div style={{
+        marginBottom: 56,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--accent)',
+        filter: 'drop-shadow(0 0 26px rgba(197,242,62,0.45))',
+      }}>
+        <Icon name="glasses" size={140} stroke="var(--accent)" strokeWidth={1.2} />
       </div>
 
       <div style={{ textAlign: 'center', padding: '0 32px' }}>
@@ -58,7 +53,7 @@ const SplashScreen = ({ onSignUp, onSignIn }) => (
           fontSize: 15, lineHeight: 1.5, color: 'var(--text-2)', margin: 0,
           maxWidth: 300, marginInline: 'auto',
         }}>
-          Your program lives in your AR glasses. The phone is just for setup.
+          Your program lives in your AR glasses.
         </p>
       </div>
     </div>
@@ -106,14 +101,9 @@ const AuthScreen = ({ auth, initialMode = 'signup', onContinue, onBack }) => {
           marginBottom: 32,
         }}><Icon name="arrow-left" size={18} /></button>
 
-        <h1 style={{ fontSize: 30, lineHeight: 1.1, fontWeight: 600, letterSpacing: -0.8, margin: 0, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 30, lineHeight: 1.1, fontWeight: 600, letterSpacing: -0.8, margin: 0, marginBottom: 28 }}>
           {mode === 'signup' ? 'Create your account' : 'Welcome back'}
         </h1>
-        <p style={{ fontSize: 14, lineHeight: 1.5, color: 'var(--text-2)', margin: 0, marginBottom: 28 }}>
-          {mode === 'signup'
-            ? "We'll sync this account to your glasses so your programs follow you everywhere."
-            : 'Sign in to pick up where you left off.'}
-        </p>
 
         <Field
           label="Email"
@@ -218,11 +208,8 @@ const NameScreen = ({ auth, onContinue, onBack }) => {
         <div className="fade-up">
           <h1 style={{
             fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: -0.7,
-            margin: 0, marginBottom: 10,
+            margin: 0, marginBottom: 32,
           }}>What should we call you?</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, marginBottom: 32 }}>
-            Just a first name is fine — we'll use it on the glasses too.
-          </p>
 
           <label style={{
             display: 'block', fontSize: 11, color: 'var(--text-3)', marginBottom: 8,
@@ -240,21 +227,6 @@ const NameScreen = ({ auth, onContinue, onBack }) => {
               outline: 'none',
             }}
           />
-
-          <Card padding={16} style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, background: 'var(--accent-soft)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon name="bolt" size={18} stroke="var(--accent)" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Quick setup</div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
-                Next, we will tune your training profile.
-              </div>
-            </div>
-          </Card>
         </div>
       </div>
 

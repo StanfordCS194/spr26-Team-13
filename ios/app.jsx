@@ -191,6 +191,9 @@ function App() {
     lastEvent: window.TRAINAR_GLASSES_STATE?.lastEvent ?? null,
   }));
   const [coachResponse, setCoachResponse] = React.useState(null);
+  // What the coach last heard — shown in the slim capsule while it's
+  // listening / thinking, before the spoken reply lands.
+  const [coachTranscript, setCoachTranscript] = React.useState('');
   // True from wakeWordDetected → coach-response arrival. Drives the green
   // "I'm in a coach turn" border around the whole app surface.
   const [wakeActive, setWakeActive] = React.useState(false);
@@ -434,7 +437,10 @@ function App() {
       const transcript = String(detail.payload?.transcript || '').toLowerCase();
 
       if (detail.type === 'wakeWordDetected') {
+        // Fresh turn: clear any lingering reply and show the listening capsule.
         setWakeActive(true);
+        setCoachTranscript('');
+        setCoachResponse(null);
         return;
       }
 
@@ -443,12 +449,16 @@ function App() {
       if (window.askTrainARCoach && transcript) {
         const clientTurnId = coachTurnIdRef.current + 1;
         coachTurnIdRef.current = clientTurnId;
+        // Show what was heard, then a "thinking" capsule while the coach works.
+        setWakeActive(true);
+        setCoachTranscript(transcript);
         if (shouldAcknowledgeLongCoachTask(transcript)) {
-          setWakeActive(true);
           setCoachResponse({ response: 'Working on it.', processing: true });
           window.dispatchEvent(new CustomEvent('trainar:speak', {
             detail: { text: 'Working on it.' },
           }));
+        } else {
+          setCoachResponse({ processing: true });
         }
         const currentProgramId = activeProgramIdRef.current;
         const currentSessionId = activeSessionIdRef.current;
@@ -951,11 +961,24 @@ function App() {
       {showTabBar && (
         <TabBar active={activeTab} live={loadedToGlasses} onTab={switchTab} />
       )}
-      {screen !== 'hud' && coachResponse?.response && (
-        <CoachOverlay
-          response={coachResponse.response}
-          sources={coachResponse.sources || []}
-          onClose={() => setCoachResponse(null)}
+      {screen !== 'hud' && (wakeActive || coachResponse?.response || coachResponse?.processing) && (
+        <CoachCapsule
+          state={
+            coachResponse?.response && !coachResponse?.processing
+              ? 'result'
+              : (coachResponse?.processing ? 'thinking' : 'listening')
+          }
+          transcript={coachTranscript}
+          result={
+            coachResponse?.response && !coachResponse?.processing
+              ? {
+                  text: coachResponse.response,
+                  kind: (coachResponse.action || coachResponse.uiPatch) ? 'action' : 'info',
+                }
+              : null
+          }
+          sources={coachResponse?.sources || []}
+          onClose={() => { setCoachResponse(null); setCoachTranscript(''); setWakeActive(false); }}
         />
       )}
       {wakeActive && <WakeListeningBorder isNativeApp={isNativeApp} />}
@@ -1011,82 +1034,4 @@ const WakeListeningBorder = ({ isNativeApp }) => (
       zIndex: 9,
     }}
   />
-);
-
-const CoachOverlay = ({ response, sources = [], onClose }) => (
-  <div style={{
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 86,
-    zIndex: 8,
-    padding: 14,
-    borderRadius: 18,
-    background: 'rgba(20, 24, 18, 0.94)',
-    border: '1px solid rgba(197,242,62,0.24)',
-    boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
-    display: 'flex',
-    gap: 12,
-    alignItems: 'flex-start',
-  }}>
-    <div style={{
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      flexShrink: 0,
-      background: 'var(--accent-soft)',
-      color: 'var(--accent)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}>
-      <Icon name="sparkle" size={16} />
-    </div>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginBottom: 3 }}>
-        Coach
-      </div>
-      <div style={{ fontSize: 13, lineHeight: 1.35, color: 'var(--text-1)' }}>
-        {response}
-      </div>
-      {sources.length > 0 && (
-        <div style={{
-          marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6,
-          color: 'var(--text-3)', fontSize: 10,
-        }}>
-          {sources.slice(0, 2).map((source) => (
-            <span key={source.key} style={{
-              border: '1px solid rgba(197,242,62,0.18)',
-              background: 'rgba(197,242,62,0.06)',
-              color: 'var(--accent)',
-              borderRadius: 999,
-              padding: '3px 7px',
-              whiteSpace: 'nowrap',
-            }}>
-              {source.authors} {source.year}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-    <button
-      onClick={onClose}
-      aria-label="Dismiss coach response"
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        border: '1px solid var(--hairline)',
-        background: 'var(--overlay-1)',
-        color: 'var(--text-2)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        flexShrink: 0,
-      }}
-    >
-      <Icon name="x" size={14} />
-    </button>
-  </div>
 );
