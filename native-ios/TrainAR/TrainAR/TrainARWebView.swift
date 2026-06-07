@@ -12,11 +12,31 @@ struct TrainARWebView<B: GlassesBridge>: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "trainarNative")
         configuration.userContentController.addUserScript(Self.bootstrapScript)
+        configuration.userContentController.addUserScript(Self.lockViewportScript)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.allowsBackForwardNavigationGestures = true
+        // Side-swipe must not navigate the page away during a workout.
+        webView.allowsBackForwardNavigationGestures = false
         context.coordinator.attach(webView)
+
+        // Lock the content in place: vertical scrolling stays for tall screens,
+        // but no pinch zoom, no rubber-band bounce, no horizontal drift.
+        //
+        // NOTE: we deliberately do NOT clamp min/maxZoomScale. Doing so traps the
+        // view if WebKit's input-focus auto-zoom kicks in (the user can no longer
+        // pinch back out). Instead we disable the pinch recognizer so users can't
+        // zoom, and prevent focus-zoom at its source via injected CSS (16px inputs).
+        let scrollView = webView.scrollView
+        scrollView.bounces = false
+        scrollView.bouncesZoom = false
+        scrollView.alwaysBounceVertical = false
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.pinchGestureRecognizer?.isEnabled = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+        // Definitive zoom kill: as the scroll view's delegate we return nil from
+        // viewForZooming, so there is nothing to zoom. Scrolling is unaffected.
+        scrollView.delegate = context.coordinator
 
         webView.load(URLRequest(url: Self.webURL))
         return webView
@@ -32,6 +52,54 @@ extension TrainARWebView {
         let configured = Bundle.main.object(forInfoDictionaryKey: "TRAINAR_WEB_URL") as? String
         let raw = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
         return URL(string: raw?.isEmpty == false ? raw! : "http://127.0.0.1:5002/ios/")!
+    }
+
+    /// Keeps the layout viewport fixed and — more importantly — prevents the
+    /// iOS input-focus auto-zoom by guaranteeing every form control renders at
+    /// >= 16px. WebKit only auto-zooms when a focused field is smaller than that,
+    /// so forcing 16px removes the trigger entirely (deterministic, unlike the
+    /// often-ignored `maximum-scale` viewport hint).
+    static var lockViewportScript: WKUserScript {
+        WKUserScript(
+            source: """
+            (function() {
+              var content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+              function lockViewport() {
+                var meta = document.querySelector('meta[name=viewport]');
+                if (!meta) {
+                  meta = document.createElement('meta');
+                  meta.name = 'viewport';
+                  (document.head || document.documentElement).appendChild(meta);
+                }
+                if (meta.getAttribute('content') !== content) {
+                  meta.setAttribute('content', content);
+                }
+              }
+              function injectNoZoomCSS() {
+                if (document.getElementById('trainar-nozoom-style')) return;
+                var style = document.createElement('style');
+                style.id = 'trainar-nozoom-style';
+                // 16px minimum on form controls stops WebKit's focus auto-zoom.
+                style.textContent =
+                  'input, select, textarea { font-size: 16px !important; }';
+                (document.head || document.documentElement).appendChild(style);
+              }
+              lockViewport();
+              injectNoZoomCSS();
+              document.addEventListener('DOMContentLoaded', function() {
+                lockViewport();
+                injectNoZoomCSS();
+              });
+              // Backstop: block the Safari gesture events used for pinch zoom,
+              // and the double-tap-to-zoom path, in case the page re-enables them.
+              ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(evt) {
+                document.addEventListener(evt, function(e) { e.preventDefault(); }, { passive: false });
+              });
+            })();
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
     }
 
     static var bootstrapScript: WKUserScript {
@@ -66,7 +134,12 @@ extension TrainARWebView {
     }
 }
 
-final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
+    // Returning nil disables pinch/double-tap zoom entirely while leaving
+    // normal scrolling intact. This is the reliable way to stop WKWebView
+    // zoom — clamping zoomScale traps the view if focus-zoom ever fires.
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { nil }
+
     private let bridge: B
     private weak var webView: WKWebView?
     private var eventTask: Task<Void, Never>?
