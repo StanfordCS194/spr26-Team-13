@@ -140,9 +140,10 @@
     window.TRAINAR_DEVICES = devicesRes.data || [];
     window.HISTORY = sessions.map((session) => sessionListItem(session, prs));
     window.ACTIVITY = buildActivity(sessions);
-    window.ACTIVITY_MONTH_DAYS = buildMonthActivity(sessions, 2026, 3);
-    window.TRAINAR_MONTH_SESSION_IDS = buildMonthSessionIds(sessions, 2026, 3);
-    window.ACTIVITY_STATS = buildMonthStats(sessions, 2026, 3);
+    const _now = new Date();
+    window.ACTIVITY_MONTH_DAYS = buildMonthActivity(sessions, _now.getFullYear(), _now.getMonth());
+    window.TRAINAR_MONTH_SESSION_IDS = buildMonthSessionIds(sessions, _now.getFullYear(), _now.getMonth());
+    window.ACTIVITY_STATS = buildMonthStats(sessions, _now.getFullYear(), _now.getMonth());
     const pastSession = getHighlightedPastSession(sessions);
     window.PAST_WORKOUT = pastSession ? await loadPastWorkout(pastSession, prs) : null;
     emitDataChange();
@@ -200,6 +201,7 @@
           id: day.id,
           title: day.title,
           weekNumber: day.week_number,
+          dayNumber: day.day_number,
           notes: day.notes || '',
           blocks: dayBlocks,
         };

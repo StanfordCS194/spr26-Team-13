@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 import json
 import os
+import re
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -24,6 +25,7 @@ from src.assistant.coach_style import style_prompt_from_context
 from src.assistant.evidence import format_evidence_context, retrieve_evidence
 from src.assistant.models import AssistantAction
 from src.assistant.tools import normalize_exercise_name
+from src.shared.exercise_guidance import coaching_cue_for
 
 
 DEFAULT_SUPABASE_URL = "https://rcmlbgjqwpfzpiownxfy.supabase.co"
@@ -100,6 +102,8 @@ def execute_supabase_action(
 
     if action.action == "get_pr":
         return _get_pr(client, action)
+    if action.action == "get_progression":
+        return _get_progression(client, action, context=context)
     if action.action == "search_history":
         return _search_history(client, action)
     if action.action == "query_history":
@@ -240,6 +244,70 @@ def _get_rep_record(client: SupabaseRestClient, action: AssistantAction) -> dict
         client,
         action.model_copy(update={"action": "query_history", "history_metric": "max_weight"}),
     )
+
+
+def _get_progression(
+    client: SupabaseRestClient,
+    action: AssistantAction,
+    *,
+    context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    from src.runtime.progression import format_progression_reply, recommend_next_session
+
+    exercise_query = normalize_exercise_name(action.exercise_name) or action.exercise_name
+    if not exercise_query:
+        return {
+            "ok": False,
+            "message": "Which exercise do you want a progression recommendation for?",
+            "action_result": None,
+            "ui_patch": None,
+        }
+
+    rows = _history_set_rows(client, exercise_query=exercise_query)
+    if not rows:
+        return {
+            "ok": False,
+            "message": (
+                f"I don't have enough history for {exercise_query} yet. "
+                "Log a few sessions first and I'll give you a progression recommendation."
+            ),
+            "action_result": None,
+            "ui_patch": None,
+        }
+
+    # Pull the prescribed rep target from the active program if available
+    rep_target: str | None = None
+    program_exercise = _find_program_exercise(
+        client,
+        _active_program_id(context),
+        exercise_query,
+        day_id=_active_day_id(context),
+    )
+    if program_exercise:
+        rep_target = program_exercise.get("rep_target")
+
+    rec = recommend_next_session(exercise_query, rows, rep_target=rep_target)
+    if rec is None:
+        return {
+            "ok": False,
+            "message": f"I couldn't compute a progression for {exercise_query} from your history.",
+            "action_result": None,
+            "ui_patch": None,
+        }
+
+    return {
+        "ok": True,
+        "message": format_progression_reply(rec),
+        "action_result": {
+            "exercise_name": rec.exercise_name,
+            "recommended_load": rec.recommended_load,
+            "recommended_reps": rec.recommended_reps,
+            "estimated_1rm": rec.estimated_1rm,
+            "sessions_used": rec.sessions_used,
+            "confidence": rec.confidence,
+        },
+        "ui_patch": None,
+    }
 
 
 def _start_workout(
@@ -1009,15 +1077,153 @@ def _finish_workout(client: SupabaseRestClient, *, context: dict[str, Any] | Non
             "finished_at": _now_iso(),
         },
     )
+    summary = _build_workout_summary(client, session_id=session_id, session=session)
     return {
         "ok": True,
-        "message": "Workout finished.",
-        "action_result": session,
+        "message": summary["message"],
+        "action_result": {**session, "summary": summary},
         "ui_patch": {
             "type": "workout_finished",
             "sessionId": session_id,
             "programId": session.get("program_id") or _active_program_id(context),
+            "summary": summary,
         },
+    }
+
+
+def _build_workout_summary(
+    client: SupabaseRestClient,
+    *,
+    session_id: str,
+    session: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute a post-workout summary: volume, sets, exercises, PRs, 1RM estimates."""
+    from src.runtime.progression import estimate_1rm
+
+    logs = client.select(
+        "workout_exercise_logs",
+        {
+            "select": "id,exercise_name",
+            "session_id": f"eq.{session_id}",
+            "order": "exercise_number",
+        },
+    )
+    if not logs:
+        return {"message": "Workout finished. No sets were logged.", "exercises": [], "new_prs": []}
+
+    log_ids = [str(log["id"]) for log in logs if log.get("id")]
+    sets = client.select(
+        "workout_sets",
+        {
+            "select": "exercise_log_id,set_number,reps,load_value,load_unit",
+            "exercise_log_id": _in_filter(log_ids),
+            "order": "set_number",
+        },
+    ) if log_ids else []
+
+    sets_by_log: dict[str, list[dict[str, Any]]] = {}
+    for s in sets:
+        sets_by_log.setdefault(str(s.get("exercise_log_id")), []).append(s)
+
+    total_sets = 0
+    total_volume = 0.0
+    exercise_summaries: list[dict[str, Any]] = []
+    pr_candidates: list[dict[str, Any]] = []
+
+    for log in logs:
+        log_sets = sets_by_log.get(str(log.get("id")), [])
+        if not log_sets:
+            continue
+        total_sets += len(log_sets)
+        ex_volume = sum(
+            float(s.get("reps") or 0) * float(s.get("load_value") or 0)
+            for s in log_sets
+        )
+        total_volume += ex_volume
+        best_set = max(
+            log_sets,
+            key=lambda s: (float(s.get("load_value") or 0), int(s.get("reps") or 0)),
+        )
+        best_weight = float(best_set.get("load_value") or 0)
+        best_reps = int(best_set.get("reps") or 0)
+        est_1rm = estimate_1rm(best_weight, best_reps) if best_weight > 0 and best_reps > 0 else None
+        ex_name = str(log.get("exercise_name") or "Unknown")
+        exercise_summaries.append({
+            "name": ex_name,
+            "sets": len(log_sets),
+            "best_weight": best_weight if best_weight > 0 else None,
+            "best_reps": best_reps if best_reps > 0 else None,
+            "estimated_1rm": round(est_1rm, 1) if est_1rm else None,
+            "volume": round(ex_volume, 1),
+        })
+        if best_weight > 0:
+            pr_candidates.append({"name": ex_name, "weight": best_weight, "reps": best_reps, "est_1rm": est_1rm})
+
+    # PR detection: compare each exercise's best weight to personal_records
+    new_prs: list[str] = []
+    for candidate in pr_candidates:
+        ex_name = candidate["name"]
+        existing = client.select(
+            "personal_records",
+            {
+                "select": "id,value,record_type",
+                "exercise_name": f"eq.{ex_name}",
+                "record_type": "eq.max_weight",
+                "limit": "1",
+            },
+        )
+        current_pr = float(existing[0].get("value") or 0) if existing else 0.0
+        if candidate["weight"] > current_pr:
+            new_prs.append(ex_name)
+            pr_payload: dict[str, Any] = {
+                "exercise_name": ex_name,
+                "record_type": "max_weight",
+                "value": candidate["weight"],
+                "unit": "lb",
+                "achieved_at": _now_iso(),
+            }
+            try:
+                if existing:
+                    client.update(
+                        "personal_records",
+                        {"id": f"eq.{existing[0]['id']}"},
+                        pr_payload,
+                    )
+                else:
+                    user = client.auth_user()
+                    if user.get("id"):
+                        client.insert("personal_records", {"user_id": user["id"], **pr_payload})
+            except Exception:  # noqa: BLE001
+                pass  # PR write is best-effort; don't fail the summary
+
+    # Build the spoken summary message
+    n_exercises = len(exercise_summaries)
+    parts: list[str] = []
+    if n_exercises == 1:
+        parts.append(f"Workout done — {total_sets} sets of {exercise_summaries[0]['name']}.")
+    else:
+        parts.append(f"Workout done! {n_exercises} exercises, {total_sets} sets.")
+    if total_volume > 0:
+        parts.append(f"Total volume: {_format_number(total_volume)} lbs.")
+    if new_prs:
+        pr_text = " and ".join(new_prs) if len(new_prs) <= 2 else f"{len(new_prs)} new PRs"
+        parts.append(f"New PR on {pr_text}!")
+    best_1rm = max(
+        (ex for ex in exercise_summaries if ex.get("estimated_1rm")),
+        key=lambda ex: ex["estimated_1rm"],
+        default=None,
+    )
+    if best_1rm:
+        parts.append(
+            f"Estimated {best_1rm['name']} 1RM: {_format_number(best_1rm['estimated_1rm'])} lbs."
+        )
+
+    return {
+        "message": " ".join(parts),
+        "exercises": exercise_summaries,
+        "total_sets": total_sets,
+        "total_volume": round(total_volume, 1),
+        "new_prs": new_prs,
     }
 
 
@@ -1058,7 +1264,7 @@ def _advance_set(
 
     return {
         "ok": True,
-        "message": _format_step_message(step),
+        "message": _format_step_message(step, include_coaching_cue=True),
         "action_result": step,
         "ui_patch": {
             "type": "workout_step_updated",
@@ -1808,16 +2014,46 @@ def _step_from_exercise(
         "repTarget": exercise.get("rep_target") if exercise else None,
         "loadTarget": exercise.get("load_target") if exercise else None,
         "restSeconds": exercise.get("rest_seconds") if exercise else None,
+        "notes": exercise.get("notes") if exercise else None,
     }
 
 
-def _format_step_message(step: dict[str, Any]) -> str:
+def _format_prescription(rep_target: Any, load_target: Any) -> str:
+    """Spoken prescription fragment from freeform rep/load targets. Both optional."""
+    reps = str(rep_target).strip() if rep_target not in (None, "") else ""
+    load = str(load_target).strip() if load_target not in (None, "") else ""
+    fragments: list[str] = []
+    if reps:
+        if re.fullmatch(r"\d+(\s*[-–]\s*\d+)?", reps):
+            fragments.append(f"{reps} reps")
+        else:
+            fragments.append(reps)
+    if load:
+        spoken = "bodyweight" if load.lower() in {"bw", "bodyweight"} else load
+        fragments.append(f"at {spoken}")
+    return " ".join(fragments)
+
+
+def _format_step_message(step: dict[str, Any], include_coaching_cue: bool = False) -> str:
     exercise = step.get("exerciseName") or "the next exercise"
     set_number = step.get("setNumber")
     set_count = step.get("setCount")
+
     if set_number and set_count:
-        return f"Next up is {exercise}, set {set_number} of {set_count}."
-    return f"Next up is {exercise}."
+        base = f"Next up is {exercise}, set {set_number} of {set_count}"
+    else:
+        base = f"Next up is {exercise}"
+
+    if not include_coaching_cue:
+        return base + "."
+
+    prescription = _format_prescription(step.get("repTarget"), step.get("loadTarget"))
+    if prescription:
+        base = f"{base}, {prescription}"
+    base += "."
+
+    cue = coaching_cue_for(step.get("exerciseName"), step.get("notes"))
+    return f"{base} {cue}" if cue else base
 
 
 def _current_step(context: dict[str, Any] | None) -> dict[str, Any] | None:

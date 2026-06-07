@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from src.assistant.chat_route import register_chat_route
+from src.export.csv.exporter import register_export_routes
 from src.assistant.service import AssistantUnavailableError, handle_message
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
@@ -45,6 +46,7 @@ def create_app() -> Flask:
         return response
 
     register_chat_route(app)
+    register_export_routes(app)
 
     @app.get("/")
     def index():
@@ -102,6 +104,42 @@ def create_app() -> Flask:
         except Exception:
             LOGGER.exception("Unexpected error while parsing uploaded program.")
             return jsonify({"error": "Program parsing failed. Try a clearer file or a text export."}), 500
+
+    @app.route("/api/workout/log", methods=["POST", "OPTIONS"])
+    def log_workout_set():
+        if request.method == "OPTIONS":
+            return ("", 204)
+        from src.assistant.tools import log_set_to_program
+
+        body = request.get_json(silent=True) or {}
+        result = log_set_to_program(
+            week=body.get("week"),
+            day=body.get("day"),
+            exercise_name=body.get("exercise_name"),
+            actual_load=body.get("actual_load"),
+            comment=body.get("comment"),
+        )
+        status_code = 200 if result.get("ok") else 400
+        return jsonify(result), status_code
+
+    @app.route("/api/workout/program", methods=["GET"])
+    def get_program_workout():
+        from src.assistant.tools import read_program_workout
+
+        week = request.args.get("week", type=int)
+        day = request.args.get("day", type=int)
+        result = read_program_workout(week, day)
+        status_code = 200 if result.get("ok") else 404
+        return jsonify(result), status_code
+
+    @app.route("/api/workout/history", methods=["GET"])
+    def get_exercise_history():
+        from src.assistant.tools import query_program_history
+
+        exercise = request.args.get("exercise", "")
+        result = query_program_history(exercise or None)
+        status_code = 200 if result.get("ok") else 404
+        return jsonify(result), status_code
 
     @app.post("/api/assistant/chat")
     def assistant_chat_api():

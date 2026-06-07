@@ -134,6 +134,22 @@ function nameSimilarity(left, right) {
   return overlap / Math.max(leftSet.size, rightWords.length, 1);
 }
 
+// Fire-and-forget write-back to the Excel program spreadsheet.
+// Extracts the per-week day number from the day title (e.g. "FULL BODY 2" → 2).
+// Silently skips if week/day can't be determined or the exercise isn't in the sheet.
+function logSetToExcel(day, exerciseName, weight) {
+  if (!day || !exerciseName || weight == null) return;
+  const week = day.weekNumber;
+  const titleMatch = /\d+/.exec(String(day.title || ''));
+  const dayNum = titleMatch ? Number(titleMatch[0]) : null;
+  if (!week || !dayNum) return;
+  fetch('/api/workout/log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ week, day: dayNum, exercise_name: exerciseName, actual_load: weight }),
+  }).catch(() => {});
+}
+
 function shouldAcknowledgeLongCoachTask(transcript) {
   const text = normalizeCoachName(transcript);
   return /\b(build|create|generate|make|write|program)\b/.test(text)
@@ -640,6 +656,7 @@ function App() {
           };
           lastLoggedSetRef.current = logged;
           setLastLoggedSet(logged);
+          logSetToExcel(activeWorkoutDayRef.current, logged.exerciseName, logged.weight);
         }).catch((err) => {
           setCoachResponse({ response: err.message || 'Could not log that set.' });
         });

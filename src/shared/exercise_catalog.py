@@ -1,5 +1,11 @@
 """Canonical exercise IDs used across ingestion, sensing, and logging."""
 
+from __future__ import annotations
+
+from functools import lru_cache
+import re
+
+
 EXERCISE_CATALOG = {
     "back_squat": {
         "display_name": "Back Squat",
@@ -47,3 +53,45 @@ EXERCISE_CATALOG = {
         "aliases": ["bulgarian split squat"],
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Name resolution
+# ---------------------------------------------------------------------------
+
+@lru_cache(maxsize=1)
+def _name_index() -> dict[str, str]:
+    """Build {recognized_name (lowercased): canonical_id} from the catalog, once."""
+    index: dict[str, str] = {}
+    for canonical_id, entry in EXERCISE_CATALOG.items():
+        index[canonical_id.lower()] = canonical_id
+        display = (entry.get("display_name") or "").strip().lower()
+        if display:
+            index[display] = canonical_id
+        for alias in entry.get("aliases", []) or []:
+            index[str(alias).strip().lower()] = canonical_id
+    return index
+
+
+def _norm(raw: str) -> str:
+    return " ".join(raw.strip().lower().split())
+
+
+def resolve_exercise_name(raw: str | None) -> str | None:
+    """Map any display name, alias, or id to its canonical catalog id.
+
+    Returns a canonical id (e.g. "back_squat") or None if there is no confident
+    match. Unknown input returns None so callers fall back gracefully.
+    """
+    if not raw:
+        return None
+    index = _name_index()
+    base = _norm(raw)
+    candidates = [base, base.replace("-", " "), base.replace(" ", "-")]
+    stripped = _norm(re.sub(r"\(.*?\)", "", base))
+    if stripped and stripped != base:
+        candidates += [stripped, stripped.replace("-", " "), stripped.replace(" ", "-")]
+    for cand in candidates:
+        if cand in index:
+            return index[cand]
+    return None

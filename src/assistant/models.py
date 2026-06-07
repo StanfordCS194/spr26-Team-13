@@ -11,6 +11,7 @@ AssistantActionName = Literal[
     "get_pr",
     "search_history",
     "query_history",
+    "get_progression",
     "log_set",
     "build_workout",
     "start_workout",
@@ -21,6 +22,8 @@ AssistantActionName = Literal[
     "finish_exercise",
     "query_workout",
     "finish_workout",
+    "read_program_workout",
+    "query_program_history",
     "unknown",
 ]
 
