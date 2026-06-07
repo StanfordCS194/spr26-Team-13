@@ -31,7 +31,7 @@ function App() {
   // as a seeded test account (its data lives in Supabase, seeded via
   // supabase/seed_test_account.py). Set BYPASS_LOGIN = false (or delete this
   // block + the effect below) to restore the real auth gate.
-  const BYPASS_LOGIN = true;
+  const BYPASS_LOGIN = false;
   const BYPASS_EMAIL = 'trainar.dev.test@example.com';
   const BYPASS_PASSWORD = 'trainardev123';
 
