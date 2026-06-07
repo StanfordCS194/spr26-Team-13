@@ -514,10 +514,24 @@ const ProgramScheduleView = ({ source }) => {
   );
 };
 
+// Shared column geometry for the clean WORKOUT/SETS/REPS/WEIGHT table —
+// matches the live workout tracker so the program reads the same whether or
+// not it's active.
+const SCHEDULE_COLS = '1.6fr 36px 44px 56px 16px';
+const ScheduleTh = ({ children, right }) => (
+  <div className="mono" style={{
+    fontSize: 9, color: 'var(--text-3)', letterSpacing: 0.6,
+    textTransform: 'uppercase', textAlign: right ? 'right' : 'left',
+  }}>{children}</div>
+);
+
 const DaySection = ({ day, dayIndex }) => {
   const blocks = day.blocks || [];
   const exercises = blocks.flatMap((block) => block.exercises || []);
   const setCount = exercises.reduce((sum, exercise) => sum + normalizeSetCount(exercise.sets), 0);
+  // Most days are a single "Main" block — only surface block headers when a
+  // day actually splits into more than one, so the table stays clean.
+  const showBlockHeaders = blocks.length > 1;
 
   return (
     <section style={{
@@ -555,10 +569,23 @@ const DaySection = ({ day, dayIndex }) => {
         )}
       </div>
 
+      {/* Column header — WORKOUT / SETS / REPS / WEIGHT */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: SCHEDULE_COLS, gap: 8, alignItems: 'center',
+        padding: '10px 14px', borderBottom: '1px solid var(--hairline)',
+      }}>
+        <ScheduleTh>Workout</ScheduleTh>
+        <ScheduleTh right>Sets</ScheduleTh>
+        <ScheduleTh right>Reps</ScheduleTh>
+        <ScheduleTh right>Weight</ScheduleTh>
+        <div />
+      </div>
+
       {blocks.map((block, blockIndex) => (
         <BlockSection
           key={block.id || blockIndex}
           block={block}
+          showHeader={showBlockHeaders}
           isLast={blockIndex === blocks.length - 1}
         />
       ))}
@@ -566,36 +593,38 @@ const DaySection = ({ day, dayIndex }) => {
   );
 };
 
-const BlockSection = ({ block, isLast }) => (
+const BlockSection = ({ block, showHeader, isLast }) => (
   <div style={{
     borderBottom: isLast ? 'none' : '1px solid var(--hairline)',
   }}>
-    <div style={{
-      padding: '11px 14px',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-      background: 'rgba(197,242,62,0.045)',
-      borderBottom: '1px solid var(--hairline)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Icon name="columns" size={13} stroke="var(--accent)" />
-        <span style={{
-          color: 'var(--text-1)', fontSize: 12.5, fontWeight: 700,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {block.title || 'Main'}
-        </span>
+    {showHeader && (
+      <div style={{
+        padding: '10px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        background: 'rgba(197,242,62,0.045)',
+        borderBottom: '1px solid var(--hairline)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <Icon name="columns" size={13} stroke="var(--accent)" />
+          <span style={{
+            color: 'var(--text-1)', fontSize: 12, fontWeight: 700,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {block.title || 'Main'}
+          </span>
+        </div>
+        {block.executionStyle && (
+          <span className="mono" style={{
+            fontSize: 9, color: 'var(--accent)', whiteSpace: 'nowrap',
+            padding: '3px 7px', borderRadius: 999,
+            border: '1px solid rgba(197,242,62,0.24)',
+            background: 'rgba(197,242,62,0.08)',
+          }}>
+            {String(block.executionStyle).replace('_', ' ')}
+          </span>
+        )}
       </div>
-      {block.executionStyle && (
-        <span className="mono" style={{
-          fontSize: 9.5, color: 'var(--accent)', whiteSpace: 'nowrap',
-          padding: '3px 7px', borderRadius: 999,
-          border: '1px solid rgba(197,242,62,0.24)',
-          background: 'rgba(197,242,62,0.08)',
-        }}>
-          {String(block.executionStyle).replace('_', ' ')}
-        </span>
-      )}
-    </div>
+    )}
 
     {(block.exercises || []).map((exercise, index) => (
       <MobileExerciseRow
@@ -610,57 +639,42 @@ const BlockSection = ({ block, isLast }) => (
 const MobileExerciseRow = ({ exercise, isLast }) => {
   const [open, setOpen] = React.useState(false);
   const hasNote = !!exercise.note;
+  const hasLoad = exercise.load && exercise.load !== '-';
 
   return (
     <div style={{
       borderBottom: isLast ? 'none' : '1px solid var(--hairline)',
       background: 'var(--surface-1)',
     }}>
-      <button
+      <div
         onClick={() => hasNote && setOpen(!open)}
         className={hasNote ? 'press' : ''}
         style={{
-          width: '100%',
+          display: 'grid', gridTemplateColumns: SCHEDULE_COLS, gap: 8, alignItems: 'center',
           padding: '13px 14px',
-          background: 'transparent',
-          border: 'none',
-          color: 'var(--text-1)',
-          textAlign: 'left',
-          fontFamily: 'var(--font-sans)',
           cursor: hasNote ? 'pointer' : 'default',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: 14.5, fontWeight: 600, lineHeight: 1.25,
-              overflowWrap: 'anywhere',
-            }}>
-              {exercise.name}
-            </div>
-            <div style={{
-              display: 'flex', gap: 6, flexWrap: 'wrap',
-              marginTop: 9,
-            }}>
-              <MetricChip label="sets" value={exercise.sets} accent />
-              <MetricChip label="reps" value={exercise.reps} />
-              <MetricChip label="load" value={exercise.load} accent={exercise.load && exercise.load !== '-'} />
-              {exercise.rest && exercise.rest !== '-' && <MetricChip label="rest" value={exercise.rest} />}
-            </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, letterSpacing: -0.1, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+            {exercise.name}
           </div>
-          {hasNote && (
-            <Icon
-              name="chevron-down"
-              size={14}
-              stroke="var(--text-3)"
-              style={{ marginTop: 2, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}
-            />
+        </div>
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{exercise.sets || '-'}</div>
+        <div className="mono" style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>{exercise.reps || '-'}</div>
+        <div className="mono" style={{ fontSize: 12, color: hasLoad ? 'var(--accent)' : 'var(--text-3)', textAlign: 'right', fontWeight: 600 }}>{exercise.load || '-'}</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          {hasNote ? (
+            <Icon name="chevron-down" size={13} stroke="var(--text-3)"
+              style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }} />
+          ) : (
+            <span style={{ width: 13, height: 13, display: 'block' }} />
           )}
         </div>
-      </button>
+      </div>
 
       {hasNote && (
-        <div style={{ maxHeight: open ? 180 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
+        <div style={{ maxHeight: open ? 240 : 0, overflow: 'hidden', transition: 'max-height 220ms ease' }}>
           <div style={{
             padding: '0 14px 14px',
             color: 'var(--text-2)',
@@ -680,37 +694,6 @@ const MobileExerciseRow = ({ exercise, isLast }) => {
     </div>
   );
 };
-
-const MetricChip = ({ label, value, accent }) => (
-  <span style={{
-    minWidth: 0,
-    maxWidth: '100%',
-    display: 'inline-flex',
-    alignItems: 'baseline',
-    gap: 4,
-    padding: '5px 7px',
-    borderRadius: 9,
-    background: accent ? 'rgba(197,242,62,0.10)' : 'var(--surface-2)',
-    border: '1px solid ' + (accent ? 'rgba(197,242,62,0.22)' : 'var(--hairline)'),
-  }}>
-    <span className="mono" style={{
-      color: accent ? 'var(--accent)' : 'var(--text-1)',
-      fontSize: 12,
-      fontWeight: 700,
-      overflowWrap: 'anywhere',
-    }}>
-      {value || '-'}
-    </span>
-    <span className="mono" style={{
-      color: 'var(--text-3)',
-      fontSize: 8.5,
-      textTransform: 'uppercase',
-      letterSpacing: 0.35,
-    }}>
-      {label}
-    </span>
-  </span>
-);
 
 function getProgramDays(source) {
   if (Array.isArray(source.days)) return source.days;

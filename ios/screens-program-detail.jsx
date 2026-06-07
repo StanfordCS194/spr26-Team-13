@@ -214,7 +214,7 @@ const ProgramViewScreen = ({
         {loadedToGlasses ? (
           <Button
             onClick={onFinishWorkout}
-            icon="check"
+            icon="trophy"
             variant="surface"
             style={{ background: 'var(--surface-2)', color: 'var(--text-1)', border: '1px solid var(--accent)' }}
           >
