@@ -201,6 +201,7 @@
           id: day.id,
           title: day.title,
           weekNumber: day.week_number,
+          dayNumber: day.day_number,
           notes: day.notes || '',
           blocks: dayBlocks,
         };
