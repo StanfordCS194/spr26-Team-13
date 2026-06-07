@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from src.assistant.chat_route import register_chat_route
+from src.export.csv.exporter import register_export_routes
 from src.assistant.service import AssistantUnavailableError, handle_message
 from src.contracts import TrainingProgram
 from src.ingestion import UnsupportedProgramSourceError, extract_program_file, normalize_extracted_program
@@ -45,6 +46,7 @@ def create_app() -> Flask:
         return response
 
     register_chat_route(app)
+    register_export_routes(app)
 
     @app.get("/")
     def index():

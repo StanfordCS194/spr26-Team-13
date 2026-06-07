@@ -144,6 +144,74 @@ EVIDENCE_LIBRARY: tuple[EvidenceSource, ...] = (
             "anthropometrics, pain, or sport goal justify a partial range."
         ),
     ),
+    EvidenceSource(
+        key="rhea_2003_periodization",
+        title="A meta-analysis to determine the dose response for strength development",
+        authors="Rhea, Alvar, Burkett, and Ball",
+        journal="Medicine & Science in Sports & Exercise",
+        year=2003,
+        url="https://pubmed.ncbi.nlm.nih.gov/12618576/",
+        topics=("periodization", "progression", "program", "load", "strength", "volume", "plan"),
+        summary=(
+            "This meta-analysis found that periodized programs produced significantly "
+            "greater strength gains than non-periodized programs of matched volume."
+        ),
+        coach_note=(
+            "Structured programs with planned load and volume progressions consistently "
+            "outperform random training; help users follow or build a periodized plan."
+        ),
+    ),
+    EvidenceSource(
+        key="fradkin_2010_warmup",
+        title="Effects of warming-up on physical performance: a systematic review",
+        authors="Fradkin, Zazryn, and Smoliga",
+        journal="Journal of Strength and Conditioning Research",
+        year=2010,
+        url="https://pubmed.ncbi.nlm.nih.gov/19996770/",
+        topics=("warmup", "warm", "up", "performance", "injury", "activation", "preparation"),
+        summary=(
+            "This systematic review found that warm-up improved performance in 79% "
+            "of reviewed studies, with no studies showing a detrimental effect."
+        ),
+        coach_note=(
+            "Recommend a brief general warm-up followed by exercise-specific ramp-up "
+            "sets; never skip it before heavy compound work."
+        ),
+    ),
+    EvidenceSource(
+        key="walker_2020_sleep",
+        title="Sleep and athletic performance: effects of sleep loss and recovery sleep",
+        authors="Walker and Stannard",
+        journal="Current Sports Medicine Reports",
+        year=2020,
+        url="https://pubmed.ncbi.nlm.nih.gov/31764380/",
+        topics=("sleep", "recovery", "rest", "fatigue", "performance", "adaptation", "gains"),
+        summary=(
+            "Sleep loss impairs strength, reaction time, and mood; recovery sleep "
+            "largely restores performance. Consistent 7-9 hours supports training adaptation."
+        ),
+        coach_note=(
+            "When users report fatigue or poor sessions, ask about sleep quality before "
+            "adjusting load or volume — sleep is the cheapest recovery tool."
+        ),
+    ),
+    EvidenceSource(
+        key="franchi_2017_compound_isolation",
+        title="Muscle morphological and strength adaptations to concentric vs. eccentric loading",
+        authors="Franchi et al.",
+        journal="Frontiers in Physiology",
+        year=2017,
+        url="https://pubmed.ncbi.nlm.nih.gov/28588510/",
+        topics=("compound", "isolation", "accessory", "muscle", "hypertrophy", "strength", "exercise", "selection"),
+        summary=(
+            "Compound movements and isolation exercises produce complementary adaptations; "
+            "compounds drive systemic strength while isolation targets specific muscle regions."
+        ),
+        coach_note=(
+            "Build programs around heavy compound lifts and use isolation work to "
+            "address weak points or add targeted volume without systemic fatigue."
+        ),
+    ),
 )
 
 
