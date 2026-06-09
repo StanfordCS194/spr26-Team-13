@@ -27,6 +27,8 @@ const ProgramViewScreen = ({
   const [name, setName] = React.useState(initialName);
   const [editing, setEditing] = React.useState(false);
   const [confirmDiscard, setConfirmDiscard] = React.useState(false);
+  const [discarding, setDiscarding] = React.useState(false);
+  const [discardError, setDiscardError] = React.useState(null);
   const inputRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -68,17 +70,17 @@ const ProgramViewScreen = ({
             <Pill>Saved</Pill>
           )}
           <button
-            onClick={loadedToGlasses ? undefined : () => setConfirmDiscard(true)}
-            disabled={loadedToGlasses}
-            className={loadedToGlasses ? '' : 'press'}
+            onClick={loadedToGlasses || discarding ? undefined : () => { setDiscardError(null); setConfirmDiscard(true); }}
+            disabled={loadedToGlasses || discarding}
+            className={loadedToGlasses || discarding ? '' : 'press'}
             aria-label="Discard program"
             style={{
               width: 36, height: 36, borderRadius: 9999,
               background: 'var(--surface-1)', border: '1px solid var(--hairline)',
               color: 'var(--text-2)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: loadedToGlasses ? 'not-allowed' : 'pointer',
-              opacity: loadedToGlasses ? 0.4 : 1,
+              cursor: loadedToGlasses || discarding ? 'not-allowed' : 'pointer',
+              opacity: loadedToGlasses || discarding ? 0.4 : 1,
             }}
           ><Icon name="trash" size={15} /></button>
         </div>
@@ -111,25 +113,48 @@ const ProgramViewScreen = ({
               <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45 }}>
                 {name} will be removed from your library. Past workout history is kept.
               </div>
+              {discardError && (
+                <div style={{ fontSize: 12, color: '#FF8A7A', lineHeight: 1.35, marginTop: 10 }}>
+                  {discardError}
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button
-                onClick={() => { setConfirmDiscard(false); onDiscard && onDiscard(); }}
-                className="press"
+                onClick={async () => {
+                  if (!onDiscard || discarding) return;
+                  setDiscarding(true);
+                  setDiscardError(null);
+                  try {
+                    await onDiscard();
+                    setConfirmDiscard(false);
+                  } catch (err) {
+                    setDiscardError(err.message || 'Could not discard this program.');
+                  } finally {
+                    setDiscarding(false);
+                  }
+                }}
+                disabled={discarding}
+                className={discarding ? '' : 'press'}
                 style={{
                   width: '100%', padding: '14px 16px', borderRadius: 9999,
                   background: '#FF8A7A', border: 'none', color: '#1A0A07',
-                  fontSize: 15, fontWeight: 600, letterSpacing: -0.2, cursor: 'pointer',
+                  fontSize: 15, fontWeight: 600, letterSpacing: -0.2,
+                  cursor: discarding ? 'wait' : 'pointer',
+                  opacity: discarding ? 0.75 : 1,
                   fontFamily: 'var(--font-sans)',
                 }}
-              >Discard program</button>
+              >{discarding ? 'Discarding...' : 'Discard program'}</button>
               <button
-                onClick={() => setConfirmDiscard(false)}
-                className="press"
+                onClick={() => { if (!discarding) setConfirmDiscard(false); }}
+                disabled={discarding}
+                className={discarding ? '' : 'press'}
                 style={{
                   width: '100%', padding: '14px 16px', borderRadius: 9999,
                   background: 'transparent', border: '1px solid var(--hairline)', color: 'var(--text-1)',
-                  fontSize: 15, fontWeight: 500, letterSpacing: -0.2, cursor: 'pointer',
+                  fontSize: 15, fontWeight: 500, letterSpacing: -0.2,
+                  cursor: discarding ? 'not-allowed' : 'pointer',
+                  opacity: discarding ? 0.6 : 1,
                   fontFamily: 'var(--font-sans)',
                 }}
               >Keep</button>
@@ -189,7 +214,7 @@ const ProgramViewScreen = ({
         {loadedToGlasses ? (
           <Button
             onClick={onFinishWorkout}
-            icon="check"
+            icon="trophy"
             variant="surface"
             style={{ background: 'var(--surface-2)', color: 'var(--text-1)', border: '1px solid var(--accent)' }}
           >

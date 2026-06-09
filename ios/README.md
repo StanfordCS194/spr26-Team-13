@@ -46,6 +46,15 @@ Workout history is stored in:
 - `workout_sets`
 - `personal_records`
 
+Coach chat tools run through the Flask backend so they can validate intent and
+write through Supabase with the signed-in user's JWT. Configure the backend
+with the same public Supabase project values:
+
+```bash
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_or_publishable_key
+```
+
 ## Layout
 
 - `index.html` — entry point, pulls in scripts in dependency order

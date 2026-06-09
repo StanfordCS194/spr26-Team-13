@@ -2,13 +2,16 @@
 // Reads from window.ACTIVITY (84-day intensity 0..3) and window.HISTORY.
 
 const CalendarScreen = ({ onOpenWorkout }) => {
-  const days = window.ACTIVITY || [];
-  // Render April 2026. Supabase-backed data provides this directly; the
-  // old 84-day buffer remains as a fallback for static demo mode.
-  const monthDays = window.ACTIVITY_MONTH_DAYS || Array.from({ length: 30 }, (_, i) => days[40 + i] || 0);
-  const firstDayOffset = 2; // April 1 2026 was a Wed → Mon-first grid offset of 2.
+  const sessions = window.TRAINAR_SESSIONS || [];
+  const initialMonth = getInitialCalendarMonth(sessions);
+  const [visibleMonth, setVisibleMonth] = React.useState(initialMonth);
+  const [selectedDay, setSelectedDay] = React.useState(null);
+  const monthModel = buildCalendarMonth(sessions, visibleMonth.year, visibleMonth.monthIndex);
+  const monthDays = monthModel.days;
+  const firstDayOffset = monthModel.firstDayOffset;
+  const selectedDaySessions = selectedDay ? (monthModel.sessionsByDay[selectedDay] || []) : [];
 
-  const stats = window.ACTIVITY_STATS || {
+  const stats = monthModel.stats || window.ACTIVITY_STATS || {
     sessions: monthDays.filter((d) => d > 0).length,
     streak: 4,
     volume: '184k',
@@ -63,17 +66,25 @@ const CalendarScreen = ({ onOpenWorkout }) => {
         padding: '0 20px 14px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button className="press" style={{
+        <button
+          onClick={() => { setSelectedDay(null); setVisibleMonth(shiftMonth(visibleMonth, -1)); }}
+          className="press"
+          style={{
           width: 32, height: 32, borderRadius: 9999,
           background: 'var(--surface-1)', border: '1px solid var(--hairline)', color: 'var(--text-1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="chevron-left" size={14} /></button>
-        <div style={{ fontSize: 16, fontWeight: 600 }}>April 2026</div>
-        <button className="press" style={{
+        }}
+        ><Icon name="chevron-left" size={14} /></button>
+        <div style={{ fontSize: 16, fontWeight: 600 }}>{monthLabel(visibleMonth)}</div>
+        <button
+          onClick={() => { setSelectedDay(null); setVisibleMonth(shiftMonth(visibleMonth, 1)); }}
+          className="press"
+          style={{
           width: 32, height: 32, borderRadius: 9999,
-          background: 'var(--surface-1)', border: '1px solid var(--hairline)', color: 'var(--text-3)',
+          background: 'var(--surface-1)', border: '1px solid var(--hairline)', color: 'var(--text-1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><Icon name="chevron-right" size={14} stroke="var(--text-3)" /></button>
+        }}
+        ><Icon name="chevron-right" size={14} /></button>
       </div>
 
       {/* Day-of-week labels. */}
@@ -96,13 +107,21 @@ const CalendarScreen = ({ onOpenWorkout }) => {
         {Array.from({ length: firstDayOffset }).map((_, i) => <div key={'empty-' + i} />)}
         {monthDays.map((v, i) => {
           const day = i + 1;
-          const isToday = day === 27;
+          const today = appDateParts(new Date().toISOString());
+          const isToday = day === today.day && visibleMonth.monthIndex === today.monthIndex && visibleMonth.year === today.year;
           const cell = intensities[v];
-          const sessionId = window.TRAINAR_MONTH_SESSION_IDS?.[day]?.id;
+          const daySessions = monthModel.sessionsByDay[day] || [];
           return (
             <button
               key={i}
-              onClick={() => v > 0 && onOpenWorkout && onOpenWorkout(sessionId)}
+              onClick={() => {
+                if (!v || !daySessions.length) return;
+                if (daySessions.length === 1) {
+                  onOpenWorkout && onOpenWorkout(daySessions[0].id);
+                } else {
+                  setSelectedDay(day);
+                }
+              }}
               className={v > 0 ? 'press' : ''}
               style={{
                 aspectRatio: '1',
@@ -124,6 +143,12 @@ const CalendarScreen = ({ onOpenWorkout }) => {
               {v > 0 && (
                 <div style={{ width: 6, height: 6, borderRadius: 3, background: cell.dot, zIndex: 1 }} />
               )}
+              {daySessions.length > 1 && (
+                <div className="mono" style={{
+                  position: 'absolute', right: 4, bottom: 3, zIndex: 2,
+                  fontSize: 8, color: 'var(--accent)', fontWeight: 700,
+                }}>{daySessions.length}</div>
+              )}
               {v > 0 && (
                 <div style={{ position: 'absolute', inset: 0, background: cell.bg, opacity: 0.5 }} />
               )}
@@ -131,6 +156,62 @@ const CalendarScreen = ({ onOpenWorkout }) => {
           );
         })}
       </div>
+
+      {selectedDaySessions.length > 1 && (
+        <div style={{ padding: '0 20px 18px' }}>
+          <div style={{
+            padding: 14,
+            borderRadius: 'var(--r-card)',
+            background: 'var(--surface-1)',
+            border: '1px solid var(--hairline)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)' }}>
+                {monthLabel(visibleMonth)} {selectedDay}
+              </div>
+              <button
+                onClick={() => setSelectedDay(null)}
+                aria-label="Close day workouts"
+                style={{
+                  width: 26, height: 26, borderRadius: 9999,
+                  border: '1px solid var(--hairline)',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <Icon name="x" size={13} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {selectedDaySessions.map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => onOpenWorkout && onOpenWorkout(session.id)}
+                  className="press"
+                  style={{
+                    width: '100%',
+                    padding: '12px 12px',
+                    borderRadius: 12,
+                    border: '1px solid var(--hairline)',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text-1)',
+                    textAlign: 'left',
+                    fontFamily: 'var(--font-sans)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 650 }}>{session.title || 'Workout'}</div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>
+                    {formatSessionTime(session.started_at || session.created_at)} · {session.total_sets || 0} sets
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recent sessions list. */}
       <div style={{ padding: '0 20px' }}>
@@ -179,5 +260,119 @@ const CalendarScreen = ({ onOpenWorkout }) => {
     </Screen>
   );
 };
+
+function getInitialCalendarMonth(sessions) {
+  const latest = sessions
+    .map((session) => appDateParts(session.started_at || session.created_at))
+    .filter(Boolean)
+    .sort((a, b) => b.sortKey.localeCompare(a.sortKey))[0];
+  return latest || appDateParts(new Date().toISOString());
+}
+
+function buildCalendarMonth(sessions, year, monthIndex) {
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(year, monthIndex, 1)).getUTCDay();
+  const firstDayOffset = (firstWeekday + 6) % 7;
+  const days = Array.from({ length: daysInMonth }, () => 0);
+  const sessionIds = {};
+  const sessionsByDay = {};
+
+  sessions.forEach((session) => {
+    const parts = appDateParts(session.started_at || session.created_at);
+    if (!parts || parts.year !== year || parts.monthIndex !== monthIndex) return;
+    const volume = Number(session.total_volume || 0);
+    days[parts.day - 1] = Math.max(
+      days[parts.day - 1],
+      volume > 20000 ? 3 : session.total_sets > 12 ? 2 : 1,
+    );
+    if (!sessionIds[parts.day] || parts.sortKey > sessionIds[parts.day].sortKey) {
+      sessionIds[parts.day] = { ...session, sortKey: parts.sortKey };
+    }
+    sessionsByDay[parts.day] = sessionsByDay[parts.day] || [];
+    sessionsByDay[parts.day].push({ ...session, sortKey: parts.sortKey });
+  });
+
+  Object.keys(sessionsByDay).forEach((day) => {
+    sessionsByDay[day].sort((left, right) => right.sortKey.localeCompare(left.sortKey));
+  });
+
+  return { days, firstDayOffset, sessionIds, sessionsByDay, stats: buildCalendarStats(sessions, year, monthIndex) };
+}
+
+function buildCalendarStats(sessions, year, monthIndex) {
+  const monthSessions = sessions.filter((session) => {
+    const parts = appDateParts(session.started_at || session.created_at);
+    return parts && parts.year === year && parts.monthIndex === monthIndex;
+  });
+  const totalVolume = monthSessions.reduce((sum, session) => sum + Number(session.total_volume || 0), 0);
+  const rpeSessions = monthSessions.filter((session) => Number(session.avg_rpe || 0) > 0);
+  const avgRpe = rpeSessions.length
+    ? rpeSessions.reduce((sum, session) => sum + Number(session.avg_rpe || 0), 0) / rpeSessions.length
+    : 0;
+  return {
+    sessions: monthSessions.length,
+    streak: longestStreak(monthSessions),
+    volume: totalVolume >= 1000 ? `${Math.round(totalVolume / 1000)}k` : String(Math.round(totalVolume)),
+    rpe: avgRpe ? Number(avgRpe.toFixed(1)) : 0,
+  };
+}
+
+function longestStreak(sessions) {
+  const activeDays = new Set(
+    sessions
+      .map((session) => appDateParts(session.started_at || session.created_at)?.day)
+      .filter(Boolean),
+  );
+  let best = 0;
+  let current = 0;
+  for (let day = 1; day <= 31; day++) {
+    if (activeDays.has(day)) {
+      current += 1;
+      best = Math.max(best, current);
+    } else {
+      current = 0;
+    }
+  }
+  return best;
+}
+
+function shiftMonth(month, delta) {
+  const date = new Date(Date.UTC(month.year, month.monthIndex + delta, 1));
+  return { year: date.getUTCFullYear(), monthIndex: date.getUTCMonth() };
+}
+
+function monthLabel(month) {
+  return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(month.year, month.monthIndex, 1)));
+}
+
+function formatSessionTime(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/Los_Angeles',
+  }).format(new Date(value));
+}
+
+function appDateParts(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  return {
+    year: Number(parts.year),
+    monthIndex: Number(parts.month) - 1,
+    day: Number(parts.day),
+    sortKey: date.toISOString(),
+  };
+}
 
 Object.assign(window, { CalendarScreen });

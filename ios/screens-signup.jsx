@@ -31,19 +31,14 @@ const SplashScreen = ({ onSignUp, onSignIn }) => (
       background: 'radial-gradient(120% 80% at 50% 30%, rgba(197,242,62,0.18), transparent 60%)',
       paddingTop: 80,
     }}>
-      {/* Glasses visor — pure CSS */}
-      <div style={{ width: 220, height: 110, position: 'relative', marginBottom: 56 }}>
-        <div style={{
-          position: 'absolute', inset: 0, borderRadius: '50%',
-          border: '1.5px solid var(--accent)',
-          boxShadow: '0 0 60px rgba(197,242,62,0.4), inset 0 0 30px rgba(197,242,62,0.15)',
-          background: 'linear-gradient(180deg, rgba(197,242,62,0.08), transparent 60%)',
-        }} />
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: 3,
-          color: 'rgba(197,242,62,0.7)',
-        }}>TRAIN.AR</div>
+      {/* Landing symbol — glasses mark */}
+      <div style={{
+        marginBottom: 56,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--accent)',
+        filter: 'drop-shadow(0 0 26px rgba(197,242,62,0.45))',
+      }}>
+        <Icon name="glasses" size={140} stroke="var(--accent)" strokeWidth={1.2} />
       </div>
 
       <div style={{ textAlign: 'center', padding: '0 32px' }}>
@@ -58,7 +53,7 @@ const SplashScreen = ({ onSignUp, onSignIn }) => (
           fontSize: 15, lineHeight: 1.5, color: 'var(--text-2)', margin: 0,
           maxWidth: 300, marginInline: 'auto',
         }}>
-          Your program lives in your AR glasses. The phone is just for setup.
+          Your program lives in your AR glasses.
         </p>
       </div>
     </div>
@@ -106,14 +101,9 @@ const AuthScreen = ({ auth, initialMode = 'signup', onContinue, onBack }) => {
           marginBottom: 32,
         }}><Icon name="arrow-left" size={18} /></button>
 
-        <h1 style={{ fontSize: 30, lineHeight: 1.1, fontWeight: 600, letterSpacing: -0.8, margin: 0, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 30, lineHeight: 1.1, fontWeight: 600, letterSpacing: -0.8, margin: 0, marginBottom: 28 }}>
           {mode === 'signup' ? 'Create your account' : 'Welcome back'}
         </h1>
-        <p style={{ fontSize: 14, lineHeight: 1.5, color: 'var(--text-2)', margin: 0, marginBottom: 28 }}>
-          {mode === 'signup'
-            ? "We'll sync this account to your glasses so your programs follow you everywhere."
-            : 'Sign in to pick up where you left off.'}
-        </p>
 
         <Field
           label="Email"
@@ -218,11 +208,8 @@ const NameScreen = ({ auth, onContinue, onBack }) => {
         <div className="fade-up">
           <h1 style={{
             fontSize: 30, lineHeight: 1.15, fontWeight: 600, letterSpacing: -0.7,
-            margin: 0, marginBottom: 10,
+            margin: 0, marginBottom: 32,
           }}>What should we call you?</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, marginBottom: 32 }}>
-            Just a first name is fine — we'll use it on the glasses too.
-          </p>
 
           <label style={{
             display: 'block', fontSize: 11, color: 'var(--text-3)', marginBottom: 8,
@@ -240,21 +227,6 @@ const NameScreen = ({ auth, onContinue, onBack }) => {
               outline: 'none',
             }}
           />
-
-          <Card padding={16} style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10, background: 'var(--accent-soft)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon name="bolt" size={18} stroke="var(--accent)" />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Quick setup</div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
-                Next, we'll pair your glasses. Takes about 30 seconds.
-              </div>
-            </div>
-          </Card>
         </div>
       </div>
 
@@ -268,8 +240,254 @@ const NameScreen = ({ auth, onContinue, onBack }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 4. Done — placeholder so the flow has somewhere to land. Real
-//    next step is glasses pairing, owned by a different ticket.
+// 4. Training profile - required lightweight personalization.
+// ─────────────────────────────────────────────────────────────
+const TrainingProfileScreen = ({ auth, onContinue, onBack }) => {
+  const existing = auth.user?.trainingProfile || {};
+  const [goal, setGoal] = React.useState(existing.trainingGoal || 'strength');
+  const [experience, setExperience] = React.useState(existing.trainingExperience || 'beginner');
+  const [days, setDays] = React.useState(existing.workoutDaysPerWeek || 3);
+  const [minutes, setMinutes] = React.useState(existing.workoutSessionMinutes || 45);
+  const [equipment, setEquipment] = React.useState(existing.availableEquipment?.length ? existing.availableEquipment : ['gym']);
+  const [coachStyle, setCoachStyle] = React.useState(existing.coachStyle || 'direct');
+  const [evidencePreference, setEvidencePreference] = React.useState(existing.evidencePreference || 'concise');
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const toggleEquipment = (value) => {
+    setEquipment((current) => {
+      if (current.includes(value)) return current.filter((item) => item !== value);
+      return [...current, value];
+    });
+  };
+
+  const submit = async () => {
+    if (!goal || !experience || !days || !minutes || !equipment.length) return;
+    setSubmitting(true);
+    const ok = await auth.setTrainingProfile({
+      trainingGoal: goal,
+      trainingExperience: experience,
+      workoutDaysPerWeek: days,
+      workoutSessionMinutes: minutes,
+      availableEquipment: equipment,
+      coachStyle,
+      evidencePreference,
+      movementConstraints: existing.movementConstraints || '',
+    });
+    setSubmitting(false);
+    if (ok) onContinue();
+  };
+
+  return (
+    <Screen padTop={56} padBottom={28} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0 24px 18px' }}>
+        <button onClick={onBack} className="press" style={{
+          width: 40, height: 40, borderRadius: 9999, background: 'var(--surface-1)',
+          border: '1px solid var(--hairline)', color: 'var(--text-1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          marginBottom: 22,
+        }}><Icon name="arrow-left" size={18} /></button>
+
+        <h1 style={{
+          fontSize: 29, lineHeight: 1.12, fontWeight: 600, letterSpacing: -0.7,
+          margin: 0, marginBottom: 9,
+        }}>Tune your coach</h1>
+        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.45, margin: 0 }}>
+          These basics shape your first plans and coach answers.
+        </p>
+      </div>
+
+      <div className="no-scrollbar" style={{
+        flex: 1, overflowY: 'auto', padding: '0 24px 16px',
+        display: 'flex', flexDirection: 'column', gap: 18,
+      }}>
+        <ChoiceGroup
+          title="Goal"
+          value={goal}
+          onChange={setGoal}
+          options={[
+            ['strength', 'Strength'],
+            ['hypertrophy', 'Muscle'],
+            ['fat_loss', 'Fat loss'],
+            ['general_fitness', 'Fitness'],
+          ]}
+        />
+
+        <ChoiceGroup
+          title="Experience"
+          value={experience}
+          onChange={setExperience}
+          options={[
+            ['beginner', 'Beginner'],
+            ['intermediate', 'Intermediate'],
+            ['advanced', 'Advanced'],
+          ]}
+        />
+
+        <StepperRow
+          title="Weekly workouts"
+          value={days}
+          min={1}
+          max={7}
+          suffix="days"
+          onChange={setDays}
+        />
+
+        <StepperRow
+          title="Session length"
+          value={minutes}
+          min={20}
+          max={120}
+          step={15}
+          suffix="min"
+          onChange={setMinutes}
+        />
+
+        <MultiChoiceGroup
+          title="Equipment"
+          values={equipment}
+          onToggle={toggleEquipment}
+          options={[
+            ['bodyweight', 'Bodyweight'],
+            ['dumbbells', 'Dumbbells'],
+            ['barbell', 'Barbell'],
+            ['machines', 'Machines'],
+            ['bands', 'Bands'],
+            ['gym', 'Full gym'],
+          ]}
+        />
+
+        <ChoiceGroup
+          title="Coach style"
+          value={coachStyle}
+          onChange={setCoachStyle}
+          options={[
+            ['direct', 'Direct'],
+            ['encouraging', 'Encouraging'],
+            ['analytical', 'Analytical'],
+            ['high_energy', 'High energy'],
+          ]}
+        />
+
+        <ChoiceGroup
+          title="Evidence"
+          value={evidencePreference}
+          onChange={setEvidencePreference}
+          options={[
+            ['minimal', 'Minimal'],
+            ['concise', 'Concise'],
+            ['detailed', 'Detailed'],
+          ]}
+        />
+
+        {auth.error && (
+          <div style={{ color: '#FF8B7C', fontSize: 13, padding: '0 4px' }}>{auth.error}</div>
+        )}
+      </div>
+
+      <div style={{ padding: '0 24px' }}>
+        <Button onClick={submit} iconRight="arrow-right" disabled={submitting || !equipment.length}>
+          {submitting ? 'Saving...' : 'Continue'}
+        </Button>
+      </div>
+    </Screen>
+  );
+};
+
+const ChoiceGroup = ({ title, value, options, onChange }) => (
+  <div>
+    <div style={{
+      fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase',
+      letterSpacing: 0.4, fontWeight: 700, marginBottom: 9,
+    }}>{title}</div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map(([id, label]) => (
+        <button
+          key={id}
+          onClick={() => onChange(id)}
+          className="press"
+          style={choiceButtonStyle(value === id)}
+        >{label}</button>
+      ))}
+    </div>
+  </div>
+);
+
+const MultiChoiceGroup = ({ title, values, options, onToggle }) => (
+  <div>
+    <div style={{
+      fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase',
+      letterSpacing: 0.4, fontWeight: 700, marginBottom: 9,
+    }}>{title}</div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map(([id, label]) => (
+        <button
+          key={id}
+          onClick={() => onToggle(id)}
+          className="press"
+          style={choiceButtonStyle(values.includes(id))}
+        >{label}</button>
+      ))}
+    </div>
+  </div>
+);
+
+const StepperRow = ({ title, value, min, max, step = 1, suffix, onChange }) => (
+  <div style={{
+    minHeight: 58, borderRadius: 16, background: 'var(--surface-1)',
+    border: '1px solid var(--hairline)', padding: '0 14px',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+  }}>
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
+      <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>
+        {value} {suffix}
+      </div>
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        onClick={() => onChange(Math.max(min, Number(value) - step))}
+        className="press"
+        style={stepperButtonStyle}
+        aria-label={`Decrease ${title}`}
+      ><Icon name="minus" size={16} /></button>
+      <button
+        onClick={() => onChange(Math.min(max, Number(value) + step))}
+        className="press"
+        style={stepperButtonStyle}
+        aria-label={`Increase ${title}`}
+      ><Icon name="plus" size={16} /></button>
+    </div>
+  </div>
+);
+
+const choiceButtonStyle = (selected) => ({
+  minHeight: 38,
+  padding: '0 13px',
+  borderRadius: 9999,
+  border: selected ? '1px solid rgba(197,242,62,0.55)' : '1px solid var(--hairline)',
+  background: selected ? 'var(--accent-soft)' : 'var(--surface-1)',
+  color: selected ? 'var(--accent)' : 'var(--text-2)',
+  fontFamily: 'var(--font-sans)',
+  fontSize: 13,
+  fontWeight: 700,
+  cursor: 'pointer',
+});
+
+const stepperButtonStyle = {
+  width: 34,
+  height: 34,
+  borderRadius: 9999,
+  border: '1px solid var(--hairline)',
+  background: 'var(--surface-2)',
+  color: 'var(--text-1)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+};
+
+// ─────────────────────────────────────────────────────────────
+// 5. Done — placeholder so the flow has somewhere to land.
 // ─────────────────────────────────────────────────────────────
 const DoneScreen = ({ auth, onAddProgram, onRestart }) => (
   <Screen padTop={0} padBottom={0} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -300,135 +518,4 @@ const DoneScreen = ({ auth, onAddProgram, onRestart }) => (
   </Screen>
 );
 
-// ─────────────────────────────────────────────────────────────
-// 4. Pair glasses — placeholder.
-//
-// We don't actually talk to glasses yet. The whole screen is fake-timer
-// driven so the visual flow matches the design. When a real bluetooth/
-// pairing layer exists, swap the setTimeout calls for real callbacks.
-// ─────────────────────────────────────────────────────────────
-const PairScreen = ({ onContinue, onSkip, onBack }) => {
-  const [phase, setPhase] = React.useState('searching'); // searching → found → connected
-
-  // Pretend to scan for glasses, then "discover" one.
-  React.useEffect(() => {
-    const t = setTimeout(() => setPhase('found'), 1600);
-    return () => clearTimeout(t);
-  }, []);
-
-  const pair = () => {
-    setPhase('connected');
-    if (window.pairDemoDevice) {
-      window.pairDemoDevice().catch((err) => console.error('Could not save paired device:', err));
-    }
-    setTimeout(onContinue, 1100);
-  };
-
-  const connected = phase === 'connected';
-
-  return (
-    <Screen padTop={64} padBottom={32} style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '0 24px' }}>
-        <button onClick={onBack} className="press" style={{
-          width: 40, height: 40, borderRadius: 9999, background: 'var(--surface-1)',
-          border: '1px solid var(--hairline)', color: 'var(--text-1)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          marginBottom: 24,
-        }}><Icon name="arrow-left" size={18} /></button>
-
-        <h1 style={{
-          fontSize: 28, lineHeight: 1.15, fontWeight: 600, letterSpacing: -0.6,
-          margin: 0, marginBottom: 10,
-        }}>Pair your glasses</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-2)', margin: 0, marginBottom: 32 }}>
-          Make sure your glasses are powered on and within 3 feet.
-        </p>
-      </div>
-
-      {/* Big concentric indicator. */}
-      <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        position: 'relative',
-      }}>
-        <div style={{
-          width: 240, height: 240, borderRadius: '50%',
-          border: '1px solid ' + (connected ? 'var(--accent)' : 'var(--hairline-2)'),
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          position: 'relative',
-          boxShadow: connected ? '0 0 80px rgba(197,242,62,0.5)' : 'none',
-          transition: 'all 600ms',
-        }}>
-          {phase === 'searching' && (
-            <div className="spin-ring" style={{
-              position: 'absolute', inset: -1, borderRadius: '50%',
-              border: '2px solid transparent', borderTopColor: 'var(--accent)',
-            }} />
-          )}
-          <div style={{
-            width: 130, height: 130, borderRadius: '50%',
-            background: connected ? 'var(--accent)' : 'var(--surface-1)',
-            border: '1px solid ' + (connected ? 'var(--accent)' : 'var(--hairline)'),
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 400ms',
-          }}>
-            {connected
-              ? <Icon name="check"   size={56} stroke="var(--on-accent)" strokeWidth={2.5} />
-              : <Icon name="glasses" size={56} stroke="var(--text-1)"   strokeWidth={1.5} />}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ padding: '0 24px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {phase === 'searching' && (
-          <Card style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="pulse-dot" style={{
-              width: 8, height: 8, borderRadius: 4, background: 'var(--accent)',
-            }} />
-            <div style={{ fontSize: 14, color: 'var(--text-2)' }}>Searching for nearby glasses…</div>
-          </Card>
-        )}
-
-        {phase === 'found' && (
-          <Card>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 12, background: 'var(--surface-2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Icon name="glasses" size={22} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>TrainAR · M2</div>
-                <div style={{
-                  fontSize: 11, color: 'var(--text-3)', marginTop: 2,
-                  fontFamily: 'var(--font-mono)',
-                }}>SN · 8E40·B7C2 · -54 dBm</div>
-              </div>
-              <Button size="sm" onClick={pair} style={{ width: 'auto' }}>Pair</Button>
-            </div>
-          </Card>
-        )}
-
-        {connected && (
-          <Card style={{
-            background: 'var(--accent-soft)', border: '1px solid rgba(197,242,62,0.3)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <Icon name="check" size={20} stroke="var(--accent)" strokeWidth={2.5} />
-              <div style={{ fontSize: 14, color: 'var(--accent)', fontWeight: 600 }}>
-                Paired — finishing setup…
-              </div>
-            </div>
-          </Card>
-        )}
-
-        <button onClick={onSkip} className="press" style={{
-          background: 'transparent', border: 'none', color: 'var(--text-2)',
-          fontSize: 13, padding: 12, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-        }}>I'll do this later</button>
-      </div>
-    </Screen>
-  );
-};
-
-Object.assign(window, { Screen, SplashScreen, AuthScreen, NameScreen, PairScreen, DoneScreen });
+Object.assign(window, { Screen, SplashScreen, AuthScreen, NameScreen, TrainingProfileScreen, DoneScreen });

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AVFoundation
 
 struct TrainARWebView<B: GlassesBridge>: UIViewRepresentable {
     @ObservedObject var bridge: B
@@ -8,42 +9,49 @@ struct TrainARWebView<B: GlassesBridge>: UIViewRepresentable {
         Coordinator(bridge: bridge)
     }
 
-    func makeUIView(context: Context) -> WKWebView {
+    func makeUIView(context: Context) -> UIView {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "trainarNative")
         configuration.userContentController.addUserScript(Self.bootstrapScript)
-        configuration.userContentController.addUserScript(Self.lockViewportScript)
+
+        let containerView = UIView()
+        containerView.backgroundColor = .black
+        context.coordinator.attachCameraPreview(to: containerView)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        // Side-swipe must not navigate the page away during a workout.
+        webView.uiDelegate = context.coordinator
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
         webView.allowsBackForwardNavigationGestures = false
+        webView.scrollView.delegate = context.coordinator
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.backgroundColor = .clear
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(webView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+        ])
         context.coordinator.attach(webView)
-
-        // Lock the content in place: vertical scrolling stays for tall screens,
-        // but no pinch zoom, no rubber-band bounce, no horizontal drift.
-        //
-        // NOTE: we deliberately do NOT clamp min/maxZoomScale. Doing so traps the
-        // view if WebKit's input-focus auto-zoom kicks in (the user can no longer
-        // pinch back out). Instead we disable the pinch recognizer so users can't
-        // zoom, and prevent focus-zoom at its source via injected CSS (16px inputs).
-        let scrollView = webView.scrollView
-        scrollView.bounces = false
-        scrollView.bouncesZoom = false
-        scrollView.alwaysBounceVertical = false
-        scrollView.alwaysBounceHorizontal = false
-        scrollView.pinchGestureRecognizer?.isEnabled = false
-        scrollView.contentInsetAdjustmentBehavior = .never
-        // Definitive zoom kill: as the scroll view's delegate we return nil from
-        // viewForZooming, so there is nothing to zoom. Scrolling is unaffected.
-        scrollView.delegate = context.coordinator
 
         webView.load(URLRequest(url: Self.webURL))
-        return webView
+        return containerView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        context.coordinator.attach(webView)
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let webView = uiView.subviews.compactMap({ $0 as? WKWebView }).first {
+            context.coordinator.attach(webView)
+        }
+        context.coordinator.attachCameraPreview(to: uiView)
     }
 }
 
@@ -52,54 +60,6 @@ extension TrainARWebView {
         let configured = Bundle.main.object(forInfoDictionaryKey: "TRAINAR_WEB_URL") as? String
         let raw = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
         return URL(string: raw?.isEmpty == false ? raw! : "http://127.0.0.1:5002/ios/")!
-    }
-
-    /// Keeps the layout viewport fixed and — more importantly — prevents the
-    /// iOS input-focus auto-zoom by guaranteeing every form control renders at
-    /// >= 16px. WebKit only auto-zooms when a focused field is smaller than that,
-    /// so forcing 16px removes the trigger entirely (deterministic, unlike the
-    /// often-ignored `maximum-scale` viewport hint).
-    static var lockViewportScript: WKUserScript {
-        WKUserScript(
-            source: """
-            (function() {
-              var content = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
-              function lockViewport() {
-                var meta = document.querySelector('meta[name=viewport]');
-                if (!meta) {
-                  meta = document.createElement('meta');
-                  meta.name = 'viewport';
-                  (document.head || document.documentElement).appendChild(meta);
-                }
-                if (meta.getAttribute('content') !== content) {
-                  meta.setAttribute('content', content);
-                }
-              }
-              function injectNoZoomCSS() {
-                if (document.getElementById('trainar-nozoom-style')) return;
-                var style = document.createElement('style');
-                style.id = 'trainar-nozoom-style';
-                // 16px minimum on form controls stops WebKit's focus auto-zoom.
-                style.textContent =
-                  'input, select, textarea { font-size: 16px !important; }';
-                (document.head || document.documentElement).appendChild(style);
-              }
-              lockViewport();
-              injectNoZoomCSS();
-              document.addEventListener('DOMContentLoaded', function() {
-                lockViewport();
-                injectNoZoomCSS();
-              });
-              // Backstop: block the Safari gesture events used for pinch zoom,
-              // and the double-tap-to-zoom path, in case the page re-enables them.
-              ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(evt) {
-                document.addEventListener(evt, function(e) { e.preventDefault(); }, { passive: false });
-              });
-            })();
-            """,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
     }
 
     static var bootstrapScript: WKUserScript {
@@ -125,7 +85,10 @@ extension TrainARWebView {
               var detail = event.detail || {};
               var text = detail.text || '';
               if (!text) return;
-              window.TrainARNative.postMessage('speakResponse', { text: text });
+              window.TrainARNative.postMessage('speakResponse', {
+                text: text,
+                continueListening: Boolean(detail.continueListening)
+              });
             });
             """,
             injectionTime: .atDocumentStart,
@@ -134,15 +97,16 @@ extension TrainARWebView {
     }
 }
 
-final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
-    // Returning nil disables pinch/double-tap zoom entirely while leaving
-    // normal scrolling intact. This is the reliable way to stop WKWebView
-    // zoom — clamping zoomScale traps the view if focus-zoom ever fires.
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? { nil }
-
+final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIScrollViewDelegate {
     private let bridge: B
     private weak var webView: WKWebView?
+    private weak var cameraContainerView: UIView?
     private var eventTask: Task<Void, Never>?
+    private let cameraSession = AVCaptureSession()
+    private let cameraSessionQueue = DispatchQueue(label: "com.trainar.hud.camera")
+    private var cameraPreviewLayer: AVCaptureVideoPreviewLayer?
+    private var cameraPosition: AVCaptureDevice.Position = .back
+    private var cameraConfigured = false
 
     init(bridge: B) {
         self.bridge = bridge
@@ -154,10 +118,55 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScr
         self.webView = webView
     }
 
+    func attachCameraPreview(to containerView: UIView) {
+        cameraContainerView = containerView
+        if cameraPreviewLayer == nil {
+            let previewLayer = AVCaptureVideoPreviewLayer(session: cameraSession)
+            previewLayer.videoGravity = .resizeAspectFill
+            previewLayer.isHidden = true
+            containerView.layer.insertSublayer(previewLayer, at: 0)
+            cameraPreviewLayer = previewLayer
+        }
+        cameraPreviewLayer?.frame = containerView.bounds
+    }
+
+    private func updatePreviewLayerFrame() {
+        guard let cameraContainerView, let cameraPreviewLayer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        cameraPreviewLayer.frame = cameraContainerView.bounds
+        if let connection = cameraPreviewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = currentVideoOrientation()
+        }
+        CATransaction.commit()
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "trainarNative" else { return }
         guard let body = message.body as? [String: Any],
               let type = body["type"] as? String else {
+            return
+        }
+
+        if type == "startHudCamera" {
+            let payload = body["payload"] as? [String: Any]
+            let facingMode = payload?["facingMode"] as? String
+            startHudCamera(facingMode: facingMode)
+            return
+        }
+
+        if type == "stopHudCamera" {
+            stopHudCamera()
+            return
+        }
+
+        if type == "switchHudCamera" {
+            switchHudCamera()
+            return
+        }
+
+        if type == "hudScreenActive" {
+            updatePreviewLayerFrame()
             return
         }
 
@@ -166,6 +175,157 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScr
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         bridge.replayState()
+    }
+
+    @available(iOS 15.0, *)
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        guard type == .camera || type == .cameraAndMicrophone else {
+            decisionHandler(.deny)
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            decisionHandler(.grant)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    decisionHandler(granted ? .grant : .deny)
+                }
+            }
+        case .denied, .restricted:
+            decisionHandler(.deny)
+        @unknown default:
+            decisionHandler(.prompt)
+        }
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        nil
+    }
+
+    func scrollViewDidLayoutSubviews(_ scrollView: UIScrollView) {
+        updatePreviewLayerFrame()
+    }
+
+    private func startHudCamera(facingMode: String?) {
+        cameraPosition = facingMode == "user" ? .front : .back
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            startConfiguredCamera()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.startConfiguredCamera()
+                    } else {
+                        self?.emitHudCameraEvent(status: "denied", message: "Camera permission was denied.")
+                    }
+                }
+            }
+        case .denied, .restricted:
+            emitHudCameraEvent(status: "denied", message: "Camera permission is disabled for TrainAR.")
+        @unknown default:
+            emitHudCameraEvent(status: "failed", message: "Camera permission status is unknown.")
+        }
+    }
+
+    private func startConfiguredCamera() {
+        cameraSessionQueue.async { [weak self] in
+            guard let self else { return }
+            do {
+                try self.configureCameraSession(position: self.cameraPosition)
+                if !self.cameraSession.isRunning {
+                    self.cameraSession.startRunning()
+                }
+                DispatchQueue.main.async {
+                    self.cameraPreviewLayer?.isHidden = false
+                    self.updatePreviewLayerFrame()
+                    self.emitHudCameraEvent(status: "streaming", message: nil)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.emitHudCameraEvent(status: "failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func stopHudCamera() {
+        cameraSessionQueue.async { [weak self] in
+            guard let self else { return }
+            if self.cameraSession.isRunning {
+                self.cameraSession.stopRunning()
+            }
+            DispatchQueue.main.async {
+                self.cameraPreviewLayer?.isHidden = true
+                self.emitHudCameraEvent(status: "stopped", message: nil)
+            }
+        }
+    }
+
+    private func switchHudCamera() {
+        cameraPosition = cameraPosition == .back ? .front : .back
+        startConfiguredCamera()
+    }
+
+    private func configureCameraSession(position: AVCaptureDevice.Position) throws {
+        cameraSession.beginConfiguration()
+        defer { cameraSession.commitConfiguration() }
+
+        cameraSession.inputs.forEach { cameraSession.removeInput($0) }
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
+            throw HudCameraError.unavailable
+        }
+
+        let input = try AVCaptureDeviceInput(device: device)
+        guard cameraSession.canAddInput(input) else {
+            throw HudCameraError.cannotAddInput
+        }
+
+        cameraSession.addInput(input)
+        cameraSession.sessionPreset = cameraSession.canSetSessionPreset(.hd1280x720) ? .hd1280x720 : .high
+        cameraConfigured = true
+    }
+
+    private func emitHudCameraEvent(status: String, message: String?) {
+        let payload: [String: String] = [
+            "status": status,
+            "message": message ?? "",
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        let script = """
+        window.dispatchEvent(new CustomEvent('trainar:native-camera', { detail: \(json) }));
+        """
+        webView?.evaluateJavaScript(script)
+    }
+
+    private func currentVideoOrientation() -> AVCaptureVideoOrientation {
+        guard let orientation = cameraContainerView?.window?.windowScene?.interfaceOrientation else {
+            return .portrait
+        }
+        switch orientation {
+        case .landscapeLeft:
+            return .landscapeLeft
+        case .landscapeRight:
+            return .landscapeRight
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        default:
+            return .portrait
+        }
     }
 
     private func startForwardingEvents() {
@@ -189,5 +349,19 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKScr
         window.dispatchEvent(new CustomEvent('trainar:glasses', { detail: \(json) }));
         """
         webView.evaluateJavaScript(script)
+    }
+}
+
+private enum HudCameraError: LocalizedError {
+    case unavailable
+    case cannotAddInput
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            return "No camera is available on this device."
+        case .cannotAddInput:
+            return "Could not attach the camera to the preview session."
+        }
     }
 }

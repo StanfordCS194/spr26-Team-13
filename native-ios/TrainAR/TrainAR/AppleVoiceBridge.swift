@@ -63,6 +63,7 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         case capturingUtterance
         case awaitingReply
         case speakingReply
+        case speakingFollowUpPrompt
     }
     private var mode: Mode = .idle
 
@@ -138,9 +139,10 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         switch type {
         case "speakResponse":
             let text = (body?["text"] as? String) ?? ""
+            let continueListening = (body?["continueListening"] as? Bool) ?? false
             // Pause wake-word recognition so we don't trigger on the reply text.
             stopRecognition()
-            mode = .speakingReply
+            mode = continueListening ? .speakingFollowUpPrompt : .speakingReply
             speak(text: text)
         case "startListening":
             // Manual override — pretend the wake word just fired.
@@ -432,6 +434,8 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         Task { @MainActor in
             switch mode {
             case .acknowledgingWakeWord:
+                startUtteranceCapture()
+            case .speakingFollowUpPrompt:
                 startUtteranceCapture()
             case .speakingReply:
                 startWakeWordDetection()

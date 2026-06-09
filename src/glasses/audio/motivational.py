@@ -5,6 +5,7 @@ import subprocess
 import threading
 
 from src.contracts.common import TriggerType
+from src.shared.exercise_guidance import get_cue_for
 
 SET_START_PHRASES = [
     "Let's go, own this set.",
@@ -74,7 +75,8 @@ def speak_phrase(
         return
 
     if trigger == TriggerType.EXERCISE_START and exercise_name:
-        phrase = f"{exercise_name}. {phrase}"
+        cue = get_cue_for(exercise_name)
+        phrase = f"{exercise_name}. {cue if cue else phrase}"
     elif trigger == TriggerType.REST_START and rest_seconds:
         phrase = f"{phrase} {rest_seconds} seconds."
 

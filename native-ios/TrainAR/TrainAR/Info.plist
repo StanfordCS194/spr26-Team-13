@@ -18,6 +18,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ChatEndpointURL</key>
+	<string>http://10.27.10.111:5001/api/chat</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -26,6 +28,21 @@
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
+			<key>10.27.10.111</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>10.27.14.236</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>10.27.12.116</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
 			<key>127.0.0.1</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
@@ -40,18 +57,16 @@
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>TrainAR uses Bluetooth to connect to Meta wearable devices.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>TrainAR reaches the local coach server on your laptop to fetch replies to your voice questions.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>TrainAR uses camera input from wearable devices to understand workout context.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TrainAR reaches the local coach server on your laptop to fetch replies to your voice questions.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>TrainAR listens for short voice commands so you can log sets hands-free during a workout.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>TrainAR transcribes your voice commands on-device so the coach can act on them.</string>
-	<key>ChatEndpointURL</key>
-	<string>http://127.0.0.1:5002/api/chat</string>
 	<key>TRAINAR_WEB_URL</key>
-	<string>http://127.0.0.1:5002/ios/</string>
+	<string>http://10.27.10.111:5001/ios/</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -62,6 +77,8 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

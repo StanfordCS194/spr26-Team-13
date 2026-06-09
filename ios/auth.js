@@ -17,15 +17,36 @@
     if (window.location.protocol === 'file:') return 'http://127.0.0.1:5002/ios/';
     return window.location.origin + window.location.pathname;
   };
+  const BASE_PROFILE_SELECT = 'id,email,display_name,units,timezone,onboarded_at';
+  const TRAINING_PROFILE_SELECT = `${BASE_PROFILE_SELECT},training_goal,training_experience,workout_days_per_week,workout_session_minutes,available_equipment,coach_style,evidence_preference,movement_constraints,training_onboarded_at`;
+  const isMissingTrainingColumnError = (error) => {
+    const message = String(error?.message || error?.details || '');
+    return /profiles\.(training_goal|training_experience|workout_days_per_week|workout_session_minutes|available_equipment|coach_style|evidence_preference|movement_constraints|training_onboarded_at).*does not exist/i.test(message)
+      || /Could not find .*training_/i.test(message);
+  };
 
   const toScreenUser = (authUser, profile) => {
     if (!authUser) return null;
+    const trainingProfile = profile ? {
+      trainingGoal: profile.training_goal || null,
+      trainingExperience: profile.training_experience || null,
+      workoutDaysPerWeek: profile.workout_days_per_week || null,
+      workoutSessionMinutes: profile.workout_session_minutes || null,
+      availableEquipment: profile.available_equipment || [],
+      coachStyle: profile.coach_style || 'direct',
+      evidencePreference: profile.evidence_preference || 'concise',
+      movementConstraints: profile.movement_constraints || '',
+      trainingOnboardedAt: profile.training_onboarded_at || null,
+    } : null;
+    window.TRAINAR_TRAINING_PROFILE = trainingProfile;
     return {
       id: authUser.id,
       email: authUser.email || profile?.email || '',
       name: profile?.display_name || null,
       units: profile?.units || 'imperial',
       timezone: profile?.timezone || 'America/Los_Angeles',
+      trainingProfile,
+      trainingProfileComplete: Boolean(profile?.training_onboarded_at),
     };
   };
 
@@ -33,10 +54,19 @@
     if (!client() || !userId) return null;
     const { data, error } = await client()
       .from('profiles')
-      .select('id,email,display_name,units,timezone,onboarded_at')
+      .select(TRAINING_PROFILE_SELECT)
       .eq('id', userId)
       .maybeSingle();
 
+    if (error && isMissingTrainingColumnError(error)) {
+      const fallback = await client()
+        .from('profiles')
+        .select(BASE_PROFILE_SELECT)
+        .eq('id', userId)
+        .maybeSingle();
+      if (fallback.error) throw fallback.error;
+      return fallback.data;
+    }
     if (error) throw error;
     return data;
   }
@@ -49,9 +79,18 @@
     const { data, error } = await client()
       .from('profiles')
       .upsert({ id: authUser.id, email: authUser.email || null }, { onConflict: 'id' })
-      .select('id,email,display_name,units,timezone,onboarded_at')
+      .select(TRAINING_PROFILE_SELECT)
       .single();
 
+    if (error && isMissingTrainingColumnError(error)) {
+      const fallback = await client()
+        .from('profiles')
+        .upsert({ id: authUser.id, email: authUser.email || null }, { onConflict: 'id' })
+        .select(BASE_PROFILE_SELECT)
+        .single();
+      if (fallback.error) throw fallback.error;
+      return fallback.data;
+    }
     if (error) throw error;
     return data;
   }
@@ -164,13 +203,67 @@
 
       const { data, error: updateError } = await client()
         .from('profiles')
-        .update({ display_name: name, onboarded_at: new Date().toISOString() })
+        .update({ display_name: name })
         .eq('id', user.id)
-        .select('id,email,display_name,units,timezone,onboarded_at')
+        .select(TRAINING_PROFILE_SELECT)
+        .single();
+
+      if (updateError && isMissingTrainingColumnError(updateError)) {
+        const fallback = await client()
+          .from('profiles')
+          .update({ display_name: name })
+          .eq('id', user.id)
+          .select(BASE_PROFILE_SELECT)
+          .single();
+        if (fallback.error) {
+          setError(fallback.error.message);
+          setPending(false);
+          return false;
+        }
+        setUser(toScreenUser({ id: user.id, email: user.email }, fallback.data));
+        setPending(false);
+        return true;
+      }
+      if (updateError) {
+        setError(updateError.message);
+        setPending(false);
+        return false;
+      }
+
+      setUser(toScreenUser({ id: user.id, email: user.email }, data));
+      setPending(false);
+      return true;
+    };
+
+    const setTrainingProfile = async (profile) => {
+      if (!user) return false;
+      setError(null);
+      setPending(true);
+
+      const row = {
+        training_goal: profile.trainingGoal,
+        training_experience: profile.trainingExperience,
+        workout_days_per_week: Number(profile.workoutDaysPerWeek),
+        workout_session_minutes: Number(profile.workoutSessionMinutes),
+        available_equipment: profile.availableEquipment || [],
+        coach_style: profile.coachStyle || 'direct',
+        evidence_preference: profile.evidencePreference || 'concise',
+        movement_constraints: profile.movementConstraints || null,
+        training_onboarded_at: new Date().toISOString(),
+        onboarded_at: new Date().toISOString(),
+      };
+
+      const { data, error: updateError } = await client()
+        .from('profiles')
+        .update(row)
+        .eq('id', user.id)
+        .select(TRAINING_PROFILE_SELECT)
         .single();
 
       if (updateError) {
-        setError(updateError.message);
+        setError(isMissingTrainingColumnError(updateError)
+          ? 'Training profile fields are not in Supabase yet. Run the latest migration, then try again.'
+          : updateError.message);
         setPending(false);
         return false;
       }
@@ -184,11 +277,12 @@
       setPending(true);
       await client().auth.signOut();
       setUser(null);
+      window.TRAINAR_TRAINING_PROFILE = null;
       setPending(false);
       if (window.resetTrainarData) window.resetTrainarData();
     };
 
-    return { user, pending, error, signUp, signIn, setName, signOut };
+    return { user, pending, error, signUp, signIn, setName, setTrainingProfile, signOut };
   }
 
   function scorePassword(pw) {
