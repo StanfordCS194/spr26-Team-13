@@ -253,7 +253,7 @@ def format_evidence_context(sources: list[EvidenceSource]) -> str:
     for source in sources:
         lines.append(
             "- "
-            f"{source.citation()}, {source.journal}: {source.summary} "
+            f"{source.citation}, {source.journal}: {source.summary} "
             f"Coach use: {source.coach_note} URL: {source.url}"
         )
     return "\n".join(lines)
