@@ -19,7 +19,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>ChatEndpointURL</key>
-	<string>http://10.27.10.111:5001/api/chat</string>
+	<string>http://127.0.0.1:5002/api/chat</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -66,7 +66,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>TrainAR transcribes your voice commands on-device so the coach can act on them.</string>
 	<key>TRAINAR_WEB_URL</key>
-	<string>http://10.27.10.111:5001/ios/</string>
+	<string>http://127.0.0.1:5002/ios/</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -79,6 +79,35 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>MWDAT</key>
+	<dict>
+		<key>AppLinkURLScheme</key>
+		<string>trainar://</string>
+		<key>MetaAppID</key>
+		<string>0</string>
+	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.trainar.dat</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>trainar</string>
+			</array>
+		</dict>
+	</array>
+	<key>UISupportedExternalAccessoryProtocols</key>
+	<array>
+		<string>com.meta.ar.wearable</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-peripheral</string>
+		<string>external-accessory</string>
 	</array>
 </dict>
 </plist>

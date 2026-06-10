@@ -13,6 +13,8 @@
 		3A1000040000000000000001 /* GlassesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000140000000000000001 /* GlassesBridge.swift */; };
 		3A1000050000000000000001 /* MetaWearablesBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000150000000000000001 /* MetaWearablesBridge.swift */; };
 		3A1000060000000000000001 /* AppleVoiceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1000170000000000000001 /* AppleVoiceBridge.swift */; };
+		D2ACB3482FD9160E008236FD /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = D2ACB3472FD9160E008236FD /* MWDATCamera */; };
+		D2ACB34A2FD9160E008236FD /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = D2ACB3492FD9160E008236FD /* MWDATCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +33,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D2ACB3482FD9160E008236FD /* MWDATCamera in Frameworks */,
+				D2ACB34A2FD9160E008236FD /* MWDATCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -41,6 +45,7 @@
 			isa = PBXGroup;
 			children = (
 				3A1000400000000000000001 /* TrainAR */,
+				D2ACB3462FD9160E008236FD /* Frameworks */,
 				3A1000500000000000000001 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -65,6 +70,13 @@
 				3A1000100000000000000001 /* TrainAR.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D2ACB3462FD9160E008236FD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,6 +123,9 @@
 				Base,
 			);
 			mainGroup = 3A1000300000000000000001;
+			packageReferences = (
+				D2ACB3452FD91573008236FD /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */,
+			);
 			productRefGroup = 3A1000500000000000000001 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -269,7 +284,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = H57LY8ZTRH;
+				DEVELOPMENT_TEAM = K384GD9F75;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrainAR/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.2;
@@ -278,7 +293,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.callumsherry.trainar.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = edu.stanford.trainar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -296,7 +311,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = H57LY8ZTRH;
+				DEVELOPMENT_TEAM = K384GD9F75;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrainAR/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.2;
@@ -305,7 +320,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.callumsherry.trainar.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = edu.stanford.trainar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -338,6 +353,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D2ACB3452FD91573008236FD /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/meta-wearables-dat-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D2ACB3472FD9160E008236FD /* MWDATCamera */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D2ACB3452FD91573008236FD /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCamera;
+		};
+		D2ACB3492FD9160E008236FD /* MWDATCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D2ACB3452FD91573008236FD /* XCRemoteSwiftPackageReference "meta-wearables-dat-ios" */;
+			productName = MWDATCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3A1000A00000000000000001 /* Project object */;
 }

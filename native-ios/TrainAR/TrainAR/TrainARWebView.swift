@@ -108,6 +108,15 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
     private var cameraPosition: AVCaptureDevice.Position = .back
     private var cameraConfigured = false
 
+    // Glasses POV stream (mock now, Meta DAT later). With useGlassesStream on,
+    // the HUD's startHudCamera renders the glasses pipeline (UIImage frames ->
+    // GlassesVideoPreviewView) behind the HUD instead of the phone AVCapture
+    // preview. Flip the source to MetaGlassesFrameSource once the SDK is added.
+    private let useGlassesStream = true
+    private let glassesPreviewView = GlassesVideoPreviewView()
+    private var glassesFrameSource: GlassesFrameSource?
+    private var glassesAttached = false
+
     init(bridge: B) {
         self.bridge = bridge
         super.init()
@@ -128,6 +137,17 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
             cameraPreviewLayer = previewLayer
         }
         cameraPreviewLayer?.frame = containerView.bounds
+
+        // Glasses preview sits just above the phone-camera layer and just below
+        // the transparent HUD WebView.
+        if !glassesAttached {
+            glassesPreviewView.isHidden = true
+            glassesPreviewView.frame = containerView.bounds
+            glassesPreviewView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            containerView.insertSubview(glassesPreviewView, at: 0)
+            glassesAttached = true
+        }
+        glassesPreviewView.frame = containerView.bounds
     }
 
     private func updatePreviewLayerFrame() {
@@ -148,15 +168,23 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
             return
         }
 
-        if type == "startHudCamera" {
-            let payload = body["payload"] as? [String: Any]
-            let facingMode = payload?["facingMode"] as? String
-            startHudCamera(facingMode: facingMode)
+        if type == "startHudCamera" || type == "startGlassesCamera" {
+            if useGlassesStream || type == "startGlassesCamera" {
+                startGlassesCamera()
+            } else {
+                let payload = body["payload"] as? [String: Any]
+                let facingMode = payload?["facingMode"] as? String
+                startHudCamera(facingMode: facingMode)
+            }
             return
         }
 
-        if type == "stopHudCamera" {
-            stopHudCamera()
+        if type == "stopHudCamera" || type == "stopGlassesCamera" {
+            if useGlassesStream || type == "stopGlassesCamera" {
+                stopGlassesCamera()
+            } else {
+                stopHudCamera()
+            }
             return
         }
 
@@ -274,6 +302,61 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
     private func switchHudCamera() {
         cameraPosition = cameraPosition == .back ? .front : .back
         startConfiguredCamera()
+    }
+
+    // MARK: - Glasses POV stream
+
+    private func startGlassesCamera() {
+        // The mock source uses the phone camera, so it needs camera permission.
+        // The real Meta DAT source will request its own wearable permission.
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            beginGlassesStream()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.beginGlassesStream()
+                    } else {
+                        self?.emitHudCameraEvent(status: "denied", message: "Camera permission was denied.")
+                    }
+                }
+            }
+        case .denied, .restricted:
+            emitHudCameraEvent(status: "denied", message: "Camera permission is disabled for TrainAR.")
+        @unknown default:
+            emitHudCameraEvent(status: "failed", message: "Camera permission status is unknown.")
+        }
+    }
+
+    private func beginGlassesStream() {
+        cameraPreviewLayer?.isHidden = true   // don't contend with the AVCapture preview
+        let source: GlassesFrameSource
+        if let existing = glassesFrameSource {
+            source = existing
+        } else {
+            #if canImport(MWDATCamera)
+            source = MetaGlassesFrameSource()   // real Ray-Ban POV once the DAT package is linked
+            #else
+            source = MockCameraFrameSource()    // phone-camera stand-in until then
+            #endif
+        }
+        glassesFrameSource = source
+        glassesPreviewView.isHidden = false
+        if let container = cameraContainerView {
+            glassesPreviewView.frame = container.bounds
+        }
+        source.start { [weak self] image in
+            DispatchQueue.main.async { self?.glassesPreviewView.display(image) }
+        }
+        emitHudCameraEvent(status: "streaming", message: nil)
+    }
+
+    private func stopGlassesCamera() {
+        glassesFrameSource?.stop()
+        glassesFrameSource = nil
+        glassesPreviewView.isHidden = true
+        emitHudCameraEvent(status: "stopped", message: nil)
     }
 
     private func configureCameraSession(position: AVCaptureDevice.Position) throws {
