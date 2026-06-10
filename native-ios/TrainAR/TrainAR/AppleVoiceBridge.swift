@@ -45,6 +45,7 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
     // Utterance-capture bookkeeping
     private var lastTranscript: String = ""
     private var lastTranscriptUpdate: Date?
+    private var lastCoachInteractionAt: Date?
     private var silenceWatchdog: Task<Void, Never>?
 
     /// Whole-word, case-insensitive regex for the wake word. `\b` boundaries
@@ -69,6 +70,7 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
 
     private let utteranceTimeoutSeconds: TimeInterval = 15.0
     private let utteranceSilenceSeconds: TimeInterval = 0.8
+    private let wakeGreetingCooldownSeconds: TimeInterval = 45.0
 
     var events: AsyncStream<GlassesBridgeEvent> { stream }
 
@@ -261,6 +263,11 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         return wakeWordRegex.firstMatch(in: transcript, options: [], range: range) != nil
     }
 
+    private func shouldSpeakWakeGreeting() -> Bool {
+        guard let lastCoachInteractionAt else { return true }
+        return Date().timeIntervalSince(lastCoachInteractionAt) > wakeGreetingCooldownSeconds
+    }
+
     /// Called when "coach" appears in the wake-word transcript. Stops the
     /// wake-word recognizer, plays an audible cue; utterance capture starts
     /// from the synthesizer's `didFinish` delegate.
@@ -269,7 +276,11 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         mode = .acknowledgingWakeWord
         emit(type: "wakeWordDetected", payload: ["keyword": "coach"])
         stopRecognition()
-        speak(text: "What up, champ?")
+        if shouldSpeakWakeGreeting() {
+            speak(text: "What up, champ?")
+        } else {
+            startUtteranceCapture()
+        }
     }
 
     /// Starts a fresh recognition task to capture the user's actual question.
@@ -375,6 +386,7 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         guard mode == .capturingUtterance else { return }
         stopRecognition()
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastCoachInteractionAt = Date()
         emit(type: "listening", payload: ["state": "stopped"])
         emit(type: "voiceCommand", payload: ["transcript": trimmed])
         startWakeWordDetection()

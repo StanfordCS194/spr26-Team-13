@@ -191,6 +191,7 @@ function App() {
     lastEvent: window.TRAINAR_GLASSES_STATE?.lastEvent ?? null,
   }));
   const [coachResponse, setCoachResponse] = React.useState(null);
+  const [hudNotice, setHudNotice] = React.useState(null);
   // True from wakeWordDetected → coach-response arrival. Drives the green
   // "I'm in a coach turn" border around the whole app surface.
   const [wakeActive, setWakeActive] = React.useState(false);
@@ -247,10 +248,18 @@ function App() {
       step: activeWorkoutStep,
       rest: activeRest,
       coachResponse,
+      notice: hudNotice,
+      workoutActive: loadedToGlasses,
     });
     window.TRAINAR_HUD_STATE = hudState;
     window.dispatchEvent(new CustomEvent('trainar:hud-state', { detail: hudState }));
-  }, [activeProgramId, activeWorkoutDay, activeWorkoutStep, activeRest, coachResponse]);
+  }, [activeProgramId, activeWorkoutDay, activeWorkoutStep, activeRest, coachResponse, hudNotice, loadedToGlasses]);
+
+  React.useEffect(() => {
+    if (!hudNotice) return undefined;
+    const timer = window.setTimeout(() => setHudNotice(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [hudNotice]);
 
   React.useEffect(() => {
     if (auth.pending) return;
@@ -420,6 +429,7 @@ function App() {
   };
 
   const openHudDemo = () => {
+    setHudNotice(null);
     setStack((prev) => [...prev, screen]);
     setScreen('hud');
   };
@@ -526,10 +536,15 @@ function App() {
             detail = window.upsertTrainarProgramCache(patch.program, patch.detail) || detail;
           }
           detail = detail || (window.getProgramDetail ? window.getProgramDetail(programId) : null);
+          activeProgramIdRef.current = programId;
           setSelectedProgramId(programId);
+          setActiveProgramId(programId);
           setParsedProgram(detail || patch.detail || null);
-          setStack((prev) => [...prev, 'home']);
-          setScreen('detail');
+          setHudNotice('Workout created. Say "start it" to begin.');
+          if (screen !== 'hud') {
+            setStack((prev) => [...prev, 'home']);
+            setScreen('detail');
+          }
         }
         return;
       }
@@ -555,8 +570,11 @@ function App() {
         setLastLoggedSet(null);
         setActiveRest(null);
         setLoadedToGlasses(true);
-        setScreen('running');
-        setStack([]);
+        setHudNotice('Workout started');
+        if (screen !== 'hud') {
+          setScreen('running');
+          setStack([]);
+        }
         if (auth.user && window.loadTrainarData) {
           window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
         }
@@ -643,7 +661,7 @@ function App() {
         setActiveWorkoutStep(patch.step || null);
         setLastLoggedSet(null);
         setActiveRest(null);
-        if (patch.step) setScreen('running');
+        if (patch.step && screen !== 'hud') setScreen('running');
         return;
       }
 
@@ -691,7 +709,7 @@ function App() {
         setActiveWorkoutStep(nextStep);
         setLastLoggedSet(null);
         setActiveRest(null);
-        setScreen('running');
+        if (screen !== 'hud') setScreen('running');
         return;
       }
 
@@ -703,7 +721,7 @@ function App() {
 
       if (patch.type === 'skip_exercise' || patch.type === 'finish_exercise') {
         skipWorkoutExercise();
-        setScreen('running');
+        if (screen !== 'hud') setScreen('running');
       }
     };
 
@@ -717,7 +735,7 @@ function App() {
       window.removeEventListener('trainar:coach-response', onCoachResponse);
       window.removeEventListener('trainar:coach-action', onCoachAction);
     };
-  }, [activeProgramId, selectedProgramId, activeSessionId, activeWorkoutDay, activeWorkoutStep, activeRest, loadedToGlasses]);
+  }, [activeProgramId, selectedProgramId, activeSessionId, activeWorkoutDay, activeWorkoutStep, activeRest, loadedToGlasses, screen]);
 
   const openWorkout = async (sessionId) => {
     let workout = null;
@@ -799,6 +817,7 @@ function App() {
         // the screen re-renders into the active hero card.
         onActivate={startWorkout}
         onFinish={finishWorkout}
+        onOpenHudDemo={openHudDemo}
       />
     ),
     calendar: <CalendarScreen key={`calendar-${dataVersion}`} onOpenWorkout={openWorkout} />,
@@ -835,6 +854,8 @@ function App() {
         step={activeWorkoutStep}
         rest={activeRest}
         coachResponse={coachResponse}
+        notice={hudNotice}
+        workoutActive={loadedToGlasses}
         onClose={back}
       />
     ),

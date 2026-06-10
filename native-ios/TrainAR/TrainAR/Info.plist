@@ -19,7 +19,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>ChatEndpointURL</key>
-	<string>http://10.27.10.111:5001/api/chat</string>
+	<string>http://10.27.9.242:5001/api/chat</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -39,6 +39,16 @@
 				<true/>
 			</dict>
 			<key>10.27.12.116</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>10.27.9.242</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>10.5.0.2</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
@@ -66,7 +76,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>TrainAR transcribes your voice commands on-device so the coach can act on them.</string>
 	<key>TRAINAR_WEB_URL</key>
-	<string>http://10.27.10.111:5001/ios/</string>
+	<string>http://10.27.9.242:5001/ios/</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

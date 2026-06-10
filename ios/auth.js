@@ -146,13 +146,14 @@
 
     const signUp = async ({ email, password }) => {
       setError(null);
-      if (!validateEmail(email)) { setError('Enter a valid email.'); return false; }
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!validateEmail(normalizedEmail)) { setError('Enter a valid email.'); return false; }
       if (!validatePassword(password)) { setError('Password must be at least 8 characters.'); return false; }
 
       setPending(true);
       try {
         const { data, error: signUpError } = await client().auth.signUp({
-          email,
+          email: normalizedEmail,
           password,
           options: { emailRedirectTo: getEmailRedirectTo() },
         });
@@ -174,12 +175,16 @@
 
     const signIn = async ({ email, password }) => {
       setError(null);
-      if (!validateEmail(email)) { setError('Enter a valid email.'); return false; }
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!validateEmail(normalizedEmail)) { setError('Enter a valid email.'); return false; }
       if (!validatePassword(password)) { setError('Password must be at least 8 characters.'); return false; }
 
       setPending(true);
       try {
-        const { data, error: signInError } = await client().auth.signInWithPassword({ email, password });
+        const { data, error: signInError } = await client().auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        });
         if (signInError) {
           setError(messageFromError(signInError, 'Could not sign in.'));
           setPending(false);

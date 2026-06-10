@@ -13,6 +13,8 @@ const HudDemoScreen = ({
   step,
   rest,
   coachResponse,
+  notice,
+  workoutActive = false,
   onClose,
 }) => {
   const videoRef = React.useRef(null);
@@ -30,6 +32,8 @@ const HudDemoScreen = ({
     step,
     rest,
     coachResponse,
+    notice,
+    workoutActive,
     now,
     fallback: externalState,
   });
@@ -164,6 +168,48 @@ const HudDemoScreen = ({
 
   return (
     <Screen padTop={0} padBottom={0} style={{ background: sourceMode === 'native-camera' ? 'transparent' : '#050605', overflow: 'hidden' }}>
+      <style>{`
+        @media (orientation: landscape) {
+          .hud-demo-controls {
+            left: 8px !important;
+            right: auto !important;
+            top: calc(env(safe-area-inset-top, 0px) + 18px) !important;
+            bottom: auto !important;
+            width: 34px !important;
+            flex-direction: column !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+            gap: 6px !important;
+            z-index: 20 !important;
+          }
+
+          .hud-demo-controls-group {
+            flex-direction: column !important;
+            gap: 6px !important;
+          }
+
+          .hud-demo-control-button {
+            width: 30px !important;
+            height: 30px !important;
+            min-width: 30px !important;
+            opacity: 0.72 !important;
+          }
+
+          .hud-demo-status-pill {
+            width: 30px !important;
+            height: 30px !important;
+            padding: 0 !important;
+            justify-content: center !important;
+            border-radius: 9999px !important;
+            font-size: 0 !important;
+            opacity: 0.72 !important;
+          }
+
+          .hud-demo-status-pill span {
+            margin: 0 !important;
+          }
+        }
+      `}</style>
       <div style={{
         position: 'absolute',
         inset: 0,
@@ -197,10 +243,10 @@ const HudDemoScreen = ({
         <HudOverlay state={hudState} />
       </div>
 
-      <div style={{
+      <div className="hud-demo-controls" style={{
         position: 'absolute',
         top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
-        left: 14,
+        left: 'calc(env(safe-area-inset-left, 0px) + 32px)',
         right: 14,
         display: 'flex',
         alignItems: 'center',
@@ -208,10 +254,10 @@ const HudDemoScreen = ({
         gap: 10,
         zIndex: 10,
       }}>
-        <button onClick={onClose} className="press" aria-label="Close HUD demo" style={hudIconButtonStyle()}>
+        <button onClick={onClose} className="press hud-demo-control-button" aria-label="Close HUD demo" style={hudIconButtonStyle()}>
           <Icon name="chevron-left" size={19} />
         </button>
-        <div style={{
+        <div className="hud-demo-status-pill" style={{
           height: 34,
           padding: '0 12px',
           borderRadius: 9999,
@@ -235,20 +281,20 @@ const HudDemoScreen = ({
           }} />
           {(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'Camera HUD' : 'Mock HUD'}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="hud-demo-controls-group" style={{ display: 'flex', gap: 8 }}>
           {sourceMode === 'camera' && (
-            <button onClick={switchCamera} className="press" aria-label="Switch camera" style={hudIconButtonStyle()}>
+            <button onClick={switchCamera} className="press hud-demo-control-button" aria-label="Switch camera" style={hudIconButtonStyle()}>
               <Icon name="rotate" size={18} />
             </button>
           )}
           {sourceMode === 'native-camera' && (
-            <button onClick={switchCamera} className="press" aria-label="Switch camera" style={hudIconButtonStyle()}>
+            <button onClick={switchCamera} className="press hud-demo-control-button" aria-label="Switch camera" style={hudIconButtonStyle()}>
               <Icon name="rotate" size={18} />
             </button>
           )}
           <button
             onClick={(sourceMode === 'camera' || sourceMode === 'native-camera') ? useMockSource : () => startCamera()}
-            className="press"
+            className="press hud-demo-control-button"
             aria-label={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'Use mock source' : 'Start camera'}
             style={hudIconButtonStyle()}
           >
@@ -260,7 +306,7 @@ const HudDemoScreen = ({
       {(cameraStatus === 'failed' || cameraStatus === 'unavailable') && (
         <div style={{
           position: 'absolute',
-          left: 18,
+          left: 'calc(env(safe-area-inset-left, 0px) + 36px)',
           right: 18,
           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)',
           zIndex: 12,
@@ -284,7 +330,6 @@ const HudDemoScreen = ({
 function HudOverlay({ state }) {
   const setProgress = state.setProgress || 'Set 1 of 1';
   const targetSummary = state.targetSummary || 'Ready';
-  const repProgress = state.repProgress || '--';
   const restActive = Number.isFinite(state.restRemainingSeconds);
   const restProgress = restActive && state.restDurationSeconds
     ? 1 - Math.max(0, Math.min(1, state.restRemainingSeconds / state.restDurationSeconds))
@@ -292,19 +337,12 @@ function HudOverlay({ state }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }}>
-      <HudPanel style={{ top: 64, left: 18, width: 292 }}>
+      <HudPanel style={{ top: 64, left: 'calc(env(safe-area-inset-left, 0px) + 36px)', width: 292 }}>
         <div style={hudPanelTitleStyle()}>Workout</div>
         <HudLine label="Exercise" value={state.exerciseName || 'Workout'} strong />
         <HudLine label="Set" value={setProgress} />
         <HudLine label="Target" value={targetSummary} />
         <HudLine label="Next" value={state.nextAction || 'Follow the active set'} muted />
-      </HudPanel>
-
-      <HudPanel style={{ right: 18, bottom: 34, width: 176, opacity: 0.82 }}>
-        <div style={hudPanelTitleStyle()}>Reps</div>
-        <div style={{ fontSize: 32, fontWeight: 750, color: '#f9fff0', lineHeight: 1.05 }}>
-          {repProgress}
-        </div>
       </HudPanel>
 
       <div style={{
@@ -338,7 +376,7 @@ function HudOverlay({ state }) {
       {restActive && (
         <div style={{
           position: 'absolute',
-          left: 18,
+          left: 'calc(env(safe-area-inset-left, 0px) + 36px)',
           right: 18,
           bottom: 38,
           display: 'flex',
@@ -382,7 +420,7 @@ function HudOverlay({ state }) {
       {state.notification && (
         <div style={{
           position: 'absolute',
-          left: 32,
+          left: 'calc(env(safe-area-inset-left, 0px) + 36px)',
           right: 32,
           bottom: restActive ? 96 : 34,
           minHeight: 44,
@@ -526,13 +564,30 @@ function HudLensVignette() {
   );
 }
 
-function deriveTrainARHudState({ programId, day, step, rest, coachResponse, now, fallback }) {
-  if (!step && fallback) {
+function deriveTrainARHudState({ programId, day, step, rest, coachResponse, notice, workoutActive, now, fallback }) {
+  if (!step && fallback?.workoutActive) {
     const remaining = calculateRestRemaining(fallback.rest, now);
     return {
       ...fallback,
       restRemainingSeconds: remaining,
       restDurationSeconds: fallback.restDurationSeconds || fallback.rest?.durationSeconds || null,
+    };
+  }
+
+  if (!step) {
+    const program = programId
+      ? (window.PROGRAMS || []).find((item) => item.id === programId)
+      : null;
+    return {
+      workoutActive: false,
+      exerciseName: 'No active workout',
+      setProgress: 'Idle',
+      repProgress: '--',
+      targetSummary: program ? `${program.name} ready` : 'Waiting for workout',
+      nextAction: program ? 'Say "start it" to begin' : 'Say "make a workout"',
+      restRemainingSeconds: null,
+      restDurationSeconds: null,
+      notification: notice || coachResponse?.response || null,
     };
   }
 
@@ -561,6 +616,7 @@ function deriveTrainARHudState({ programId, day, step, rest, coachResponse, now,
   else if (step) nextAction = 'Finish or move to next exercise';
 
   return {
+    workoutActive,
     exerciseName,
     setProgress: step ? `Set ${setNumber} of ${setCount}` : 'No active set',
     repProgress: repTarget ? `0 / ${repTarget}` : '--',
@@ -568,17 +624,19 @@ function deriveTrainARHudState({ programId, day, step, rest, coachResponse, now,
     nextAction,
     restRemainingSeconds,
     restDurationSeconds: restSeconds,
-    notification: coachResponse?.response || null,
+    notification: notice || coachResponse?.response || null,
   };
 }
 
-function buildTrainARHudStateSnapshot({ programId, day, step, rest, coachResponse }) {
+function buildTrainARHudStateSnapshot({ programId, day, step, rest, coachResponse, notice, workoutActive }) {
   return deriveTrainARHudState({
     programId,
     day,
     step,
     rest,
     coachResponse,
+    notice,
+    workoutActive,
     now: Date.now(),
     fallback: null,
   });

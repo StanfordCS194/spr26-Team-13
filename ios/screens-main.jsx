@@ -22,6 +22,7 @@ const HomeScreen = ({
   glassesBattery = 78,
   loadedToGlasses = false,
   activeProgramId = null,
+  onOpenHudDemo,
 }) => {
   const programs  = window.PROGRAMS || [];
   const loadedProgram = activeProgramId
@@ -80,6 +81,48 @@ const HomeScreen = ({
           </div>
         </button>
       </div>
+
+      {!loadedToGlasses && (
+        <div style={{ padding: '0 20px 16px' }}>
+          <button
+            onClick={onOpenHudDemo}
+            className="press"
+            style={{
+              width: '100%',
+              padding: '15px 18px',
+              borderRadius: 'var(--r-card)',
+              background: 'var(--surface-1)',
+              border: '1px solid var(--hairline)',
+              color: 'var(--text-1)',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <div style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--hairline)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Icon name="video" size={19} stroke="var(--accent)" strokeWidth={2.2} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.2 }}>Make workout demo</div>
+              <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 1 }}>Open camera HUD before voice commands</div>
+            </div>
+            <Icon name="chevron-right" size={17} stroke="var(--text-3)" />
+          </button>
+        </div>
+      )}
 
       {/* Loaded-to-glasses hero — only when active. */}
       {loaded && (

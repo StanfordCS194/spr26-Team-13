@@ -338,6 +338,8 @@ def _parse_user_message_locally(message: str) -> AssistantAction:
         return AssistantAction(action="search_history", exercise_name=exercise_name, date_range=_extract_date_range(text))
     if "finish" in text and "workout" in text:
         return AssistantAction(action="finish_workout")
+    if _looks_like_start_created_workout(text):
+        return AssistantAction(action="start_workout")
     if "start" in text and "workout" in text:
         return AssistantAction(
             action="start_workout",
