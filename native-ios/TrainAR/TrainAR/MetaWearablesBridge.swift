@@ -134,8 +134,14 @@ final class MetaGlassesFrameSource: NSObject, GlassesFrameSource {
     private var session: DeviceSession?
     private var frameToken: Any?
     private var stateTask: Task<Void, Never>?
+    private var isRunning = false
 
     func start(onFrame: @escaping (UIImage) -> Void) {
+        guard !isRunning else {
+            NSLog("[MetaGlassesFrameSource] start ignored — already connecting/streaming")
+            return
+        }
+        isRunning = true
         self.onFrame = onFrame
         stateTask = Task { [weak self] in
             guard let self else { return }
@@ -187,6 +193,7 @@ final class MetaGlassesFrameSource: NSObject, GlassesFrameSource {
                 }
             } catch {
                 NSLog("[MetaGlassesFrameSource] start failed: \(error.localizedDescription)")
+                self.isRunning = false   // allow a fresh attempt after a failure
             }
         }
     }
@@ -206,6 +213,7 @@ final class MetaGlassesFrameSource: NSObject, GlassesFrameSource {
     }
 
     func stop() {
+        isRunning = false
         stateTask?.cancel()
         stateTask = nil
         frameToken = nil

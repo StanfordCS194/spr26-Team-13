@@ -113,6 +113,9 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
     // GlassesVideoPreviewView) behind the HUD instead of the phone AVCapture
     // preview. Flip the source to MetaGlassesFrameSource once the SDK is added.
     private let useGlassesStream = true
+    // Demo safety net: force the phone-camera mock instead of the flaky
+    // dev-preview Meta glasses SDK. Set false to use the real glasses again.
+    private let forceMockCamera = true
     private let glassesPreviewView = GlassesVideoPreviewView()
     private var glassesFrameSource: GlassesFrameSource?
     private var glassesAttached = false
@@ -336,9 +339,13 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
             source = existing
         } else {
             #if canImport(MWDATCamera)
-            source = MetaGlassesFrameSource()   // real Ray-Ban POV once the DAT package is linked
+            if forceMockCamera {
+                source = MockCameraFrameSource()   // reliable phone-camera POV for the demo
+            } else {
+                source = MetaGlassesFrameSource()  // real Ray-Ban POV (set forceMockCamera = false)
+            }
             #else
-            source = MockCameraFrameSource()    // phone-camera stand-in until then
+            source = MockCameraFrameSource()
             #endif
         }
         glassesFrameSource = source

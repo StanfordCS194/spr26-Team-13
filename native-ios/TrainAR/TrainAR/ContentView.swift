@@ -6,8 +6,8 @@ struct ContentView: View {
     var body: some View {
         TrainARWebView(bridge: bridge)
             .ignoresSafeArea()
-            // Voice coach uses the phone mic/speaker (not the glasses' Bluetooth
-            // HFP), so it coexists with DAT camera streaming.
+            // Phone-camera demo path uses no glasses Bluetooth, so the voice
+            // coach (phone mic/speaker) is safe to run alongside it.
             .onAppear { bridge.connect() }
     }
 }
