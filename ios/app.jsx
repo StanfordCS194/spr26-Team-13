@@ -160,9 +160,18 @@ function App() {
   const auth = useAuth();
   const isNativeApp = Boolean(window.TRAINAR_NATIVE_APP);
 
+  // TEMP: skip the login/signup flow during native testing by auto-signing-in
+  // as a seeded test account (its data lives in Supabase, seeded via
+  // supabase/seed_test_account.py). Set BYPASS_LOGIN = false (or delete this
+  // block + the effect below) to restore the real auth gate.
+  const BYPASS_LOGIN = false;
+  const BYPASS_EMAIL = 'trainar.dev.test@example.com';
+  const BYPASS_PASSWORD = 'trainardev123';
+
   // Where in the flow are we? Start at splash unless there's already a
   // signed-in user with a name — in that case skip straight to home.
   const initialScreen = (() => {
+    if (BYPASS_LOGIN) return 'home';
     if (auth.user && auth.user.name && auth.user.trainingProfileComplete) return 'home';
     if (auth.user && auth.user.name) return 'training';
     return 'splash';
@@ -228,6 +237,17 @@ function App() {
     window.addEventListener('trainar:data', onData);
     return () => window.removeEventListener('trainar:data', onData);
   }, []);
+
+  // TEMP (BYPASS_LOGIN): silently sign in as the seeded test account once the
+  // auth check settles and no one is signed in. The normal auth effect below
+  // then loads that user's data and drops us on home. Remove with the bypass.
+  const bypassTriedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!BYPASS_LOGIN || bypassTriedRef.current) return;
+    if (auth.pending || auth.user) return;
+    bypassTriedRef.current = true;
+    auth.signIn({ email: BYPASS_EMAIL, password: BYPASS_PASSWORD });
+  }, [auth.pending, auth.user]);
 
   React.useEffect(() => {
     if (auth.pending || !auth.user) return;

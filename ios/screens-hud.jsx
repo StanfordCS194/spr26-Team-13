@@ -292,7 +292,7 @@ function HudOverlay({ state }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }}>
-      <HudPanel style={{ top: 64, left: 18, width: 292 }}>
+      <HudPanel style={{ top: 'calc(env(safe-area-inset-top, 0px) + 58px)', left: 18, width: 292 }}>
         <div style={hudPanelTitleStyle()}>Workout</div>
         <HudLine label="Exercise" value={state.exerciseName || 'Workout'} strong />
         <HudLine label="Set" value={setProgress} />
@@ -309,7 +309,9 @@ function HudOverlay({ state }) {
 
       <div style={{
         position: 'absolute',
-        top: 66,
+        // Sit just below the top control bar (camera / rotate buttons), which is
+        // anchored to the safe-area inset — a fixed top collided with them.
+        top: 'calc(env(safe-area-inset-top, 0px) + 58px)',
         right: 18,
         display: 'flex',
         alignItems: 'center',

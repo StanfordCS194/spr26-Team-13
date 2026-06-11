@@ -161,14 +161,18 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
 
     // MARK: - Audio session
 
-    /// Configures the shared audio session so mic + TTS route through Bluetooth
-    /// when a BT audio device (Ray-Ban Display glasses, AirPods, etc.) is paired.
+    /// Configures the shared audio session for mic + TTS. NOTE: Bluetooth routing
+    /// is intentionally NOT enabled — claiming the Ray-Bans' HFP audio channel
+    /// conflicts with DAT camera streaming ("No eligible device"). Voice runs
+    /// through the phone mic/speaker so the glasses radio stays free for the POV
+    /// camera. (To put coach audio back on the glasses, use the DAT audio APIs
+    /// instead of the Bluetooth HFP profile.)
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
             mode: .voiceChat,
-            options: [.allowBluetooth, .allowBluetoothA2DP, .duckOthers, .defaultToSpeaker]
+            options: [.duckOthers, .defaultToSpeaker]
         )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
         logRouteSnapshot(reason: "post-activate")
@@ -269,8 +273,17 @@ final class AppleVoiceBridge: NSObject, GlassesBridge, AVSpeechSynthesizerDelega
         mode = .acknowledgingWakeWord
         emit(type: "wakeWordDetected", payload: ["keyword": "coach"])
         stopRecognition()
-        speak(text: "What up, champ?")
+        speak(text: Self.wakeAcknowledgements.randomElement() ?? "Yes?")
     }
+
+    /// Spoken back when the wake word fires — one picked at random each time.
+    private static let wakeAcknowledgements = [
+        "Yes?",
+        "What's up?",
+        "Talk to me.",
+        "What?",
+        "How can I help?",
+    ]
 
     /// Starts a fresh recognition task to capture the user's actual question.
     /// Same audio engine + tap pattern; different result handler — this one
