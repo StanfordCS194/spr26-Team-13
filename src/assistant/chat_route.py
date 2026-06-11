@@ -9,7 +9,6 @@ the LLM with app context and short-lived conversation memory.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import Any
 
@@ -19,7 +18,7 @@ from src.assistant.context_manager import CoachContextManager
 from src.assistant.coach_style import style_action_reply, style_prompt_from_context
 from src.assistant.evidence import format_evidence_context, response_sources_payload, retrieve_evidence
 from src.assistant.models import AssistantAction
-from src.assistant.service import DEFAULT_ASSISTANT_MODEL, build_openai_client, handle_action, parse_user_message
+from src.assistant.service import build_openai_client, get_chat_model, handle_action, parse_user_message
 from src.assistant.supabase_tools import SupabaseToolError, execute_supabase_action
 
 LOGGER = logging.getLogger(__name__)
@@ -35,7 +34,6 @@ TRAINER_SYSTEM_PROMPT = (
     "as 'Schoenfeld et al.' Do not imply medical certainty."
 )
 
-CHAT_MODEL_ENV = "OPENAI_CHAT_MODEL"
 CHAT_MAX_TOKENS = 200
 DEFAULT_CHAT_SESSION_ID = "default"
 
@@ -152,15 +150,14 @@ def register_chat_route(app: Flask) -> None:
                 jsonify(
                     {
                         "error": (
-                            "OpenAI client not configured. Set OPENAI_API_KEY in .env "
-                            "and install the openai package."
+                            "Coach not configured. Set OPENAI_API_KEY or GROQ_API_KEY in .env."
                         )
                     }
                 ),
                 503,
             )
 
-        model = os.getenv(CHAT_MODEL_ENV, DEFAULT_ASSISTANT_MODEL)
+        model = get_chat_model()
         profile = app_context.get("trainingProfile") if isinstance(app_context, dict) else None
         evidence_sources = retrieve_evidence(text, profile=profile if isinstance(profile, dict) else None)
         evidence_context = format_evidence_context(evidence_sources)

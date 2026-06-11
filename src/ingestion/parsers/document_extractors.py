@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from docling.document_converter import DocumentConverter
 from PIL import Image
 from pillow_heif import register_heif_opener
 
@@ -18,18 +17,17 @@ Image.MAX_IMAGE_PIXELS = None
 
 TEXT_SUFFIXES = {".txt", ".md"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".heic", ".heif"}
+SPREADSHEET_SUFFIXES = {".xlsx", ".csv"}
 DOCLING_SUFFIXES = {
     ".pdf",
     ".docx",
     ".pptx",
     ".html",
-    ".csv",
-    ".xlsx",
     ".md",
     *IMAGE_SUFFIXES,
 }
 
-_CONVERTER: DocumentConverter | None = None
+_CONVERTER = None
 MAX_DOCLING_IMAGE_PIXELS = 12_000_000
 MAX_DOCLING_IMAGE_LONG_EDGE = 2400
 
@@ -50,10 +48,48 @@ def extract_document_text(
             source_type=SourceType.TEXT,
         )
 
+    if suffix in SPREADSHEET_SUFFIXES:
+        return _extract_spreadsheet(file_path)
+
     if suffix in DOCLING_SUFFIXES:
         return _extract_with_docling(file_path, include_structured_data=include_structured_data)
 
     raise ValueError(f"Unsupported program source: {file_path.suffix or '<no extension>'}")
+
+
+def _extract_spreadsheet(path: Path) -> ExtractedDocument:
+    import csv
+    import openpyxl
+
+    sections: list[str] = []
+
+    if path.suffix.lower() == ".csv":
+        with path.open(newline="", encoding="utf-8-sig") as fh:
+            rows = list(csv.reader(fh))
+        sections.append(_rows_to_markdown(path.stem, rows))
+    else:
+        wb = openpyxl.load_workbook(path, data_only=True)
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows = [[str(cell) if cell is not None else "" for cell in row] for row in ws.iter_rows(values_only=True)]
+            non_empty = [r for r in rows if any(v.strip() for v in r)]
+            if non_empty:
+                sections.append(_rows_to_markdown(sheet_name, non_empty))
+
+    text = "\n\n".join(sections) if sections else "(empty spreadsheet)"
+    return ExtractedDocument(
+        text=text,
+        source_type=SourceType.SPREADSHEET,
+        extraction_notes=["openpyxl_used"],
+        structured_markdown=text,
+    )
+
+
+def _rows_to_markdown(title: str, rows: list[list[str]]) -> str:
+    lines = [f"## {title}"]
+    for row in rows:
+        lines.append("| " + " | ".join(str(v).replace("|", "\\|").strip() for v in row) + " |")
+    return "\n".join(lines)
 
 
 def _extract_with_docling(path: Path, *, include_structured_data: bool) -> ExtractedDocument:
@@ -83,7 +119,9 @@ def _extract_with_docling(path: Path, *, include_structured_data: bool) -> Extra
     )
 
 
-def _get_converter() -> DocumentConverter:
+def _get_converter():
+    from docling.document_converter import DocumentConverter  # lazy import — not needed for /ios
+
     global _CONVERTER
     if _CONVERTER is None:
         _CONVERTER = DocumentConverter()

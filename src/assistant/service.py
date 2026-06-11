@@ -35,13 +35,32 @@ class AssistantUnavailableError(RuntimeError):
     """Raised when the configured LLM assistant cannot return an action."""
 
 
-def build_openai_client() -> "OpenAIClient | None":
-    """Build an OpenAI client when an API key is configured."""
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+DEFAULT_GROQ_CHAT_MODEL = "llama-3.3-70b-versatile"
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or OpenAI is None:
+
+def build_openai_client() -> "OpenAIClient | None":
+    """Build a chat client — OpenAI if configured, otherwise Groq as fallback."""
+
+    if OpenAI is None:
         return None
-    return OpenAI(api_key=api_key)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        return OpenAI(api_key=api_key)
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        return OpenAI(api_key=groq_key, base_url=GROQ_BASE_URL)
+    return None
+
+
+def get_chat_model() -> str:
+    """Return the chat model name appropriate for the configured provider."""
+
+    if os.getenv("OPENAI_API_KEY"):
+        return os.getenv("OPENAI_CHAT_MODEL", DEFAULT_ASSISTANT_MODEL)
+    if os.getenv("GROQ_API_KEY"):
+        return os.getenv("GROQ_CHAT_MODEL", DEFAULT_GROQ_CHAT_MODEL)
+    return DEFAULT_ASSISTANT_MODEL
 
 
 def parse_user_message(
@@ -59,18 +78,40 @@ def parse_user_message(
     if openai_client is None:
         return _parse_user_message_locally(cleaned_message)
 
-    response = openai_client.responses.parse(
-        model=os.getenv("OPENAI_ASSISTANT_MODEL", DEFAULT_ASSISTANT_MODEL),
-        instructions=SYSTEM_PROMPT,
-        input=cleaned_message,
-        text_format=AssistantAction,
+    import json
+
+    model = os.getenv("OPENAI_ASSISTANT_MODEL") or get_chat_model()
+    completion = openai_client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT + "\n\nRespond with a JSON object only."},
+            {"role": "user", "content": cleaned_message},
+        ],
+        response_format={"type": "json_object"},
         temperature=0,
-        max_output_tokens=400,
+        max_tokens=400,
     )
-    parsed_action = response.output_parsed
-    if parsed_action is None:
-        raise AssistantUnavailableError("OpenAI assistant returned no structured action.")
-    return parsed_action
+    raw = completion.choices[0].message.content or "{}"
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return _parse_user_message_locally(cleaned_message)
+
+    try:
+        return AssistantAction.model_validate(data)
+    except Exception as exc:
+        # Groq sometimes returns invalid enum values — null out the offending fields and retry
+        from pydantic import ValidationError
+        if isinstance(exc, ValidationError):
+            for err in exc.errors():
+                field = err["loc"][0] if err["loc"] else None
+                if field and field != "action":
+                    data[field] = None
+            try:
+                return AssistantAction.model_validate(data)
+            except Exception:
+                pass
+        return _parse_user_message_locally(cleaned_message)
 
 
 def handle_message(message: str, *, context: dict[str, Any] | None = None) -> dict[str, Any]:
