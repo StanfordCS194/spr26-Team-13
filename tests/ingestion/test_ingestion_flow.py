@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.ingestion import extract_program_file, ingest_program_text
+from src.ingestion.models import ExtractedDocument
 
 from src.contracts import SourceType
 from src.runtime.session_engine import build_planned_sessions
@@ -24,6 +25,22 @@ def test_extract_program_file_returns_plain_text_for_txt_fixture():
     assert extracted.source_type == SourceType.TEXT
     assert "Back Squat - 3x5 @ 185 lb" in extracted.text
     assert extracted.structured_markdown is None
+
+
+def test_extract_program_file_requests_structured_data(monkeypatch):
+    captured = {}
+
+    def fake_extract(path, *, include_structured_data=False):
+        captured["path"] = path
+        captured["include_structured_data"] = include_structured_data
+        return ExtractedDocument(text="Day 1\nBack Squat", source_type=SourceType.IMAGE)
+
+    monkeypatch.setattr("src.ingestion.service.extract_document_text", fake_extract)
+
+    extract_program_file("workout.png")
+
+    assert captured["path"] == "workout.png"
+    assert captured["include_structured_data"] is True
 
 
 def test_build_planned_sessions_from_imported_program():
@@ -102,3 +119,22 @@ def test_ingest_program_text_forward_attaches_title_before_block_header():
     assert [block.title for block in day.blocks] == ["Team Prep", "Block 1"]
     assert [exercise.display_name for exercise in day.blocks[0].exercises] == ["Calf Stretch"]
     assert day.blocks[1].exercises[0].display_name == "Clean Pull + Hang Clean"
+
+
+def test_ingest_image_text_treats_leading_numbers_as_reps():
+    program = ingest_program_text(
+        """
+        Day 1
+        10 Squats
+        10 Push Ups
+        5 Pull Ups
+        """,
+        user_id="user-7",
+        source_type=SourceType.IMAGE,
+    )
+
+    exercises = program.weeks[0].days[0].exercises
+
+    assert len(exercises) == 3
+    assert [exercise.rep_target for exercise in exercises] == ["10", "10", "5"]
+    assert not any("push ups 5 pull ups" in exercise.display_name.lower() for exercise in exercises)

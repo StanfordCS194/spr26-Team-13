@@ -12,6 +12,7 @@ class ExtractedDocument:
     extraction_notes: list[str] = field(default_factory=list)
     structured_markdown: str | None = None
     structured_data: dict | None = None
+    source_path: str | None = None
 
 
 @dataclass(slots=True)

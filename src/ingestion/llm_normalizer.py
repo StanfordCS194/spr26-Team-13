@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
+from pathlib import Path
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -121,7 +124,7 @@ def _request_structured_program(
                 {"role": "system", "content": _build_instructions()},
                 {
                     "role": "user",
-                    "content": _build_input(
+                    "content": _build_chat_user_content(
                         document=document,
                         user_id=user_id,
                         program_id=program_id,
@@ -140,7 +143,7 @@ def _request_structured_program(
     response = client.responses.parse(
         model=model,
         instructions=_build_instructions(),
-        input=_build_input(
+        input=_build_responses_input(
             document=document,
             user_id=user_id,
             program_id=program_id,
@@ -156,6 +159,55 @@ def _request_structured_program(
     return parsed_program
 
 
+def _build_chat_user_content(
+    *,
+    document: ExtractedDocument,
+    user_id: str,
+    program_id: str,
+    title: str,
+) -> str | list[dict[str, Any]]:
+    text = _build_input(
+        document=document,
+        user_id=user_id,
+        program_id=program_id,
+        title=title,
+    )
+    image_url = _build_image_data_url(document)
+    if image_url is None:
+        return text
+    return [
+        {"type": "text", "text": text},
+        {"type": "image_url", "image_url": {"url": image_url}},
+    ]
+
+
+def _build_responses_input(
+    *,
+    document: ExtractedDocument,
+    user_id: str,
+    program_id: str,
+    title: str,
+) -> str | list[dict[str, Any]]:
+    text = _build_input(
+        document=document,
+        user_id=user_id,
+        program_id=program_id,
+        title=title,
+    )
+    image_url = _build_image_data_url(document)
+    if image_url is None:
+        return text
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": text},
+                {"type": "input_image", "image_url": image_url},
+            ],
+        }
+    ]
+
+
 def _build_instructions() -> str:
     exercise_catalog = "\n".join(
         f"- {exercise_id}: {details['display_name']}"
@@ -169,9 +221,20 @@ def _build_instructions() -> str:
         "Do not drop exercises from the parsed document. Every exercise line should appear either inside a named block "
         "or in the flat day exercise list. If exercises appear before the first explicit Block heading, preserve their "
         "section title when present, such as Team Prep; otherwise place them in an initial block titled Block 0. "
+        "For image or spreadsheet-like inputs, prefer positioned_ocr_text over markdown reading order. Use each text "
+        "item's bounding box coordinates to infer day columns, table columns, row groups, and which reps/intensity/RPE "
+        "values belong to each exercise. When an original image is attached, use it as the source of truth for line "
+        "breaks, day columns, block headers, and row group boundaries. Reconstruct rows by spatial proximity before normalizing. "
+        "Do not merge adjacent exercise names into a combined exercise. If two exercise names appear on separate visual "
+        "rows, emit two exercises even when markdown places them next to each other. "
+        "Do not create a new day from an exercise row. If the document has exercise rows but no explicit Day heading, "
+        "place all exercises into Week 1 Day 1 titled Day 1. "
+        "Treat leading letter labels such as A, B, C, D, or I as source row labels, not part of the exercise name. "
         "If an exercise title appears immediately before a block header and the reps, intensity, RPE, duration, or notes "
         "that follow clearly belong to that exercise, attach that exercise to the following block rather than leaving it "
         "in Team Prep or Block 0. "
+        "If a screenshot includes day navigation sections that explicitly show 0 lifts, 0 exercises, or 0 sets and contain "
+        "no exercise rows, omit those empty day sections when other days contain the actual workout. "
         "If the document has Day sections but no week sections, place all days into week 1. "
         "Do not invent exercises, loads, reps, or RPE values that are not supported by the parsed document. "
         "Keep unresolved ambiguity in ambiguity_flags and set needs_user_confirmation to true when information is incomplete or uncertain. "
@@ -197,12 +260,74 @@ def _build_input(
         "title": title,
         "source_type": document.source_type.value,
     }
+    positioned_ocr = _build_positioned_ocr_text(document.structured_data)
+    structured_section = ""
+    if positioned_ocr:
+        structured_section = (
+            "Positioned OCR text JSON:\n"
+            f"{json.dumps(positioned_ocr, indent=2)}\n\n"
+            "Coordinate notes: x0/y0/x1/y1 are page coordinates from the extractor. "
+            "Use x positions to separate day and prescription columns, and y positions to group visual rows.\n\n"
+        )
+
     return (
         "Metadata:\n"
         f"{json.dumps(metadata, indent=2)}\n\n"
+        f"{structured_section}"
         "Parsed document markdown:\n"
         f"{document.structured_markdown or document.text}"
     )
+
+
+def _build_positioned_ocr_text(structured_data: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Return compact OCR text with coordinates for table reconstruction."""
+
+    if not structured_data:
+        return []
+
+    positioned: list[dict[str, Any]] = []
+    for item in structured_data.get("texts") or []:
+        text = str(item.get("text") or item.get("orig") or "").strip()
+        if not text:
+            continue
+        prov = (item.get("prov") or [{}])[0] or {}
+        bbox = prov.get("bbox") or {}
+        positioned.append(
+            {
+                "page": int(prov.get("page_no") or 1),
+                "x0": _round_coord(bbox.get("l")),
+                "y0": _round_coord(bbox.get("b")),
+                "x1": _round_coord(bbox.get("r")),
+                "y1": _round_coord(bbox.get("t")),
+                "text": text[:240],
+            }
+        )
+
+    positioned.sort(key=lambda item: (item["page"], -(item["y1"] or 0), item["x0"] or 0))
+    return positioned[:400]
+
+
+def _round_coord(value: Any) -> float | None:
+    try:
+        return round(float(value), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_image_data_url(document: ExtractedDocument) -> str | None:
+    if document.source_type.value != "image" or not document.source_path:
+        return None
+
+    path = Path(document.source_path)
+    if not path.exists() or not path.is_file():
+        return None
+
+    mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError:
+        return None
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def _slugify(value: str) -> str:

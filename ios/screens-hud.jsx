@@ -94,6 +94,7 @@ const HudDemoScreen = ({
       stopHudCameraStream(streamRef);
       setCameraStatus('starting');
       setCameraError('');
+      setFacingMode(nextFacingMode);
       window.sendTrainARNativeCommand('startHudCamera', { facingMode: nextFacingMode });
       return;
     }
@@ -247,12 +248,12 @@ const HudDemoScreen = ({
             </button>
           )}
           <button
-            onClick={(sourceMode === 'camera' || sourceMode === 'native-camera') ? useMockSource : () => startCamera()}
+            onClick={() => startCamera('environment')}
             className="press"
-            aria-label={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'Use mock source' : 'Start camera'}
+            aria-label={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'Refresh back camera' : 'Start back camera'}
             style={hudIconButtonStyle()}
           >
-            <Icon name={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'video' : 'camera'} size={18} />
+            <Icon name={(sourceMode === 'camera' || sourceMode === 'native-camera') ? 'rotate' : 'camera'} size={18} />
           </button>
         </div>
       </div>

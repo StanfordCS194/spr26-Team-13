@@ -232,6 +232,10 @@ function App() {
     setScreen(next);
   };
 
+  const showRunningWorkout = () => {
+    setScreen((current) => (current === 'hud' ? current : 'running'));
+  };
+
   React.useEffect(() => {
     const onData = () => setDataVersion((version) => version + 1);
     window.addEventListener('trainar:data', onData);
@@ -622,10 +626,16 @@ function App() {
         setActiveWorkoutStep(null);
         setLastLoggedSet(null);
         setActiveRest(null);
+        let nextPastWorkout = window.PAST_WORKOUT || null;
         if (auth.user && window.loadTrainarData) {
-          window.loadTrainarData(auth.user.id).catch((err) => console.error('Could not refresh TrainAR data:', err));
+          try {
+            await window.loadTrainarData(auth.user.id);
+            nextPastWorkout = window.PAST_WORKOUT || nextPastWorkout;
+          } catch (err) {
+            console.error('Could not refresh TrainAR data:', err);
+          }
         }
-        setSelectedPastWorkout(window.PAST_WORKOUT || null);
+        setSelectedPastWorkout(nextPastWorkout);
         setStack([]);
         setScreen('past');
         return;
@@ -690,7 +700,7 @@ function App() {
         setActiveWorkoutStep(patch.step || null);
         setLastLoggedSet(null);
         setActiveRest(null);
-        if (patch.step) setScreen('running');
+        if (patch.step) showRunningWorkout();
         return;
       }
 
@@ -738,7 +748,7 @@ function App() {
         setActiveWorkoutStep(nextStep);
         setLastLoggedSet(null);
         setActiveRest(null);
-        setScreen('running');
+        showRunningWorkout();
         return;
       }
 
@@ -749,8 +759,19 @@ function App() {
       }
 
       if (patch.type === 'skip_exercise' || patch.type === 'finish_exercise') {
+        if (patch.type === 'finish_exercise' && window.completeWorkoutExercise) {
+          try {
+            await window.completeWorkoutExercise(patch.sessionId || activeSessionIdRef.current, {
+              exerciseName: patch.exerciseName,
+              programId: activeProgramIdRef.current,
+              currentExerciseName: activeWorkoutStepRef.current?.exerciseName,
+            });
+          } catch (err) {
+            console.error('Could not mark exercise complete:', err);
+          }
+        }
         skipWorkoutExercise();
-        setScreen('running');
+        showRunningWorkout();
       }
     };
 
@@ -833,8 +854,6 @@ function App() {
     home: (
       <HomeScreen
         key={`home-${dataVersion}-${activeProgramId || 'none'}`}
-        glassesConnected={Boolean(glassesState.connected)}
-        glassesBattery={glassesState.battery}
         loadedToGlasses={loadedToGlasses}
         activeProgramId={activeProgramId}
         onAddProgram={() => go('add')}
@@ -851,10 +870,10 @@ function App() {
     calendar: <CalendarScreen key={`calendar-${dataVersion}`} onOpenWorkout={openWorkout} />,
     profile:  (
       <ProfileScreen
-        key={`profile-${dataVersion}-${glassesState.connected ? 'connected' : 'idle'}`}
+        key={`profile-${dataVersion}`}
         user={auth.user}
-        glassesState={glassesState}
         onEditTraining={() => go('training')}
+        onLogout={restart}
       />
     ),
 

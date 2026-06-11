@@ -164,6 +164,20 @@ const PastWorkoutScreen = ({ workout, onBack, onDelete }) => {
             }}>
               <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 10 }}>{ex.name}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {(!ex.sets || ex.sets.length === 0) && (
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '24px 1fr 16px',
+                    alignItems: 'center', gap: 8,
+                    padding: '6px 0', fontSize: 12,
+                  }}>
+                    <div className="mono" style={{ color: 'var(--text-3)' }}>✓</div>
+                    <div className="mono" style={{ color: 'var(--text-1)' }}>Completed</div>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: 4, marginLeft: 'auto',
+                      background: 'var(--text-3)',
+                    }} />
+                  </div>
+                )}
                 {(ex.sets || []).map((s, j) => (
                   <div key={j} style={{
                     display: 'grid', gridTemplateColumns: '24px 1fr 1fr 1fr 16px',

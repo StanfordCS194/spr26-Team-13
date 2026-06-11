@@ -72,4 +72,3 @@ Do not commit `.env`.
 - `src/export/`: external logging/export
 - `tests/fixtures/`: example payloads for team-wide testing
 
-Charlie Abowd

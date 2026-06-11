@@ -49,6 +49,11 @@ INLINE_PRESCRIPTION_PATTERN = re.compile(
     r"\b\d+\s*(?:x|sets?\s*/|sets?\s+of)\s*\d+",
     re.IGNORECASE,
 )
+LEADING_REPS_PATTERN = re.compile(
+    r"^(?P<reps>\d{1,3})\s+(?P<name>[A-Za-z][A-Za-z'’+\-/ ]*[A-Za-z])$",
+    re.IGNORECASE,
+)
+STRUCTURAL_COUNT_NAMES = {"day", "days", "week", "weeks", "lift", "lifts", "set", "sets"}
 
 
 def parse_program_text(
@@ -147,7 +152,12 @@ def parse_program_text(
         current_week = current_week or _append_default_week(parsed_program)
         current_day = current_day or _append_default_day(current_week)
 
-        if prefer_multiline_grouping and _looks_like_name_fragment(line) and not INLINE_PRESCRIPTION_PATTERN.search(line):
+        if (
+            prefer_multiline_grouping
+            and _looks_like_name_fragment(line)
+            and not INLINE_PRESCRIPTION_PATTERN.search(line)
+            and not _looks_like_leading_reps_exercise(line)
+        ):
             pending_name_lines.append(line)
             pending_name_lines = pending_name_lines[-3:]
             continue
@@ -208,6 +218,14 @@ def _clean_line(line: str) -> str:
 def _parse_exercise_line(line: str) -> ParsedExercise | None:
     sets_reps_match = SETS_REPS_PATTERN.search(line) or SETS_OF_PATTERN.search(line) or SETS_SLASH_PATTERN.search(line)
     if not sets_reps_match:
+        leading_reps_match = _leading_reps_match(line)
+        if leading_reps_match:
+            return ParsedExercise(
+                raw_name=leading_reps_match.group("name").strip(),
+                set_count=1,
+                rep_target=leading_reps_match.group("reps"),
+                ambiguity_flags=["missing_intensity_target"],
+            )
         if not re.search(r"[A-Za-z]", line):
             return None
         if not _looks_like_name_fragment(line):
@@ -278,6 +296,20 @@ def _looks_like_name_fragment(line: str) -> bool:
         return False
     alpha_count = sum(char.isalpha() for char in line)
     return alpha_count >= 5
+
+
+def _looks_like_leading_reps_exercise(line: str) -> bool:
+    return _leading_reps_match(line) is not None
+
+
+def _leading_reps_match(line: str) -> re.Match[str] | None:
+    match = LEADING_REPS_PATTERN.match(line)
+    if match is None:
+        return None
+    first_name_token = match.group("name").strip().lower().split()[0]
+    if first_name_token in STRUCTURAL_COUNT_NAMES:
+        return None
+    return match
 
 
 def _is_prescription_only_line(line: str) -> bool:

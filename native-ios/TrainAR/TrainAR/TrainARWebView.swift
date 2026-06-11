@@ -108,11 +108,9 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
     private var cameraPosition: AVCaptureDevice.Position = .back
     private var cameraConfigured = false
 
-    // Glasses POV stream (mock now, Meta DAT later). With useGlassesStream on,
-    // the HUD's startHudCamera renders the glasses pipeline (UIImage frames ->
-    // GlassesVideoPreviewView) behind the HUD instead of the phone AVCapture
-    // preview. Flip the source to MetaGlassesFrameSource once the SDK is added.
-    private let useGlassesStream = true
+    // Glasses POV stream (mock now, Meta DAT later). HUD camera refresh should
+    // stay on the iPhone camera; only explicit startGlassesCamera commands use
+    // the wearable/Meta path.
     private let glassesPreviewView = GlassesVideoPreviewView()
     private var glassesFrameSource: GlassesFrameSource?
     private var glassesAttached = false
@@ -169,7 +167,7 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
         }
 
         if type == "startHudCamera" || type == "startGlassesCamera" {
-            if useGlassesStream || type == "startGlassesCamera" {
+            if type == "startGlassesCamera" {
                 startGlassesCamera()
             } else {
                 let payload = body["payload"] as? [String: Any]
@@ -180,7 +178,7 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
         }
 
         if type == "stopHudCamera" || type == "stopGlassesCamera" {
-            if useGlassesStream || type == "stopGlassesCamera" {
+            if type == "stopGlassesCamera" {
                 stopGlassesCamera()
             } else {
                 stopHudCamera()
@@ -243,6 +241,9 @@ final class Coordinator<B: GlassesBridge>: NSObject, WKNavigationDelegate, WKUID
     }
 
     private func startHudCamera(facingMode: String?) {
+        glassesFrameSource?.stop()
+        glassesFrameSource = nil
+        glassesPreviewView.isHidden = true
         cameraPosition = facingMode == "user" ? .front : .back
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {

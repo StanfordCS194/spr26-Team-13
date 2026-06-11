@@ -31,13 +31,14 @@ def ingest_program_text(
         fallback_title=title,
         prefer_multiline_grouping=(source_type == SourceType.IMAGE),
     )
-    return normalize_parsed_program(
+    program = normalize_parsed_program(
         parsed_program,
         user_id=user_id,
         source_type=source_type,
         program_id=program_id,
         title=title,
     )
+    return _drop_aggregate_exercise_rows(program)
 
 
 def ingest_program_file(
@@ -50,7 +51,7 @@ def ingest_program_file(
     """Extract text from a file and normalize it into a training program."""
 
     try:
-        document = extract_document_text(path)
+        document = extract_document_text(path, include_structured_data=True)
     except ValueError as exc:
         raise UnsupportedProgramSourceError(str(exc)) from exc
 
@@ -83,14 +84,7 @@ def normalize_extracted_program(
                 program_id=program_id,
                 title=fallback_title,
             )
-            repaired = _repair_missing_prescriptions_from_local_parse(
-                program,
-                document,
-                user_id=user_id,
-                program_id=program_id,
-                title=fallback_title,
-            )
-            return repaired, get_llm_provider()
+            return program, get_llm_provider()
         except Exception:
             pass
 
@@ -100,151 +94,122 @@ def normalize_extracted_program(
         prefer_multiline_grouping=(document.source_type == SourceType.IMAGE) or bool(document.extraction_notes),
     )
     parsed_program.extraction_notes.extend(document.extraction_notes)
-    return (
-        normalize_parsed_program(
-            parsed_program,
-            user_id=user_id,
-            source_type=document.source_type,
-            program_id=program_id,
-            title=title,
-        ),
-        "local_fallback",
+    program = normalize_parsed_program(
+        parsed_program,
+        user_id=user_id,
+        source_type=document.source_type,
+        program_id=program_id,
+        title=title,
     )
+    return _drop_empty_navigation_days(_drop_aggregate_exercise_rows(program)), "local_fallback"
 
 
-def _repair_missing_prescriptions_from_local_parse(
-    program: TrainingProgram,
-    document,
-    *,
-    user_id: str,
-    program_id: str | None,
-    title: str,
-) -> TrainingProgram:
-    """Use the deterministic parser to fill fields the LLM left blank.
+def _drop_empty_navigation_days(program: TrainingProgram) -> TrainingProgram:
+    """Remove empty day shells produced by app screenshots.
 
-    LLM normalization preserves messy document structure better, but it can
-    occasionally omit obvious reps/load/rest that the regex parser sees in the
-    source text. This keeps the LLM layout and only backfills missing fields.
+    Some workout app screenshots include calendar/navigation rows such as
+    "Week 1 - Day 1 / 0 lifts / 0 sets" before the selected day. The parser
+    should not expose those empty shells as real training days when another day
+    contains the actual workout.
     """
 
-    try:
-      parsed_program = parse_program_text(
-          document.text,
-          fallback_title=title,
-          prefer_multiline_grouping=(document.source_type == SourceType.IMAGE) or bool(document.extraction_notes),
-      )
-      local_program = normalize_parsed_program(
-          parsed_program,
-          user_id=user_id,
-          source_type=document.source_type,
-          program_id=program_id,
-          title=title,
-      )
-    except Exception:
-        return program
-
-    local_exercises = _flatten_program_exercises(local_program)
-    if not local_exercises:
-        return program
-
-    local_by_name: dict[str, list[ProgramExercise]] = {}
-    for exercise in local_exercises:
-        local_by_name.setdefault(_exercise_match_key(exercise), []).append(exercise)
-
-    target_exercises = _flatten_program_exercises(program)
-    for index, target in enumerate(target_exercises):
-        if not _has_missing_prescription(target):
+    for week in program.weeks:
+        if len(week.days) <= 1:
             continue
-
-        local = _pop_matching_local_exercise(target, local_by_name)
-        if local is None and index < len(local_exercises) and _compatible_names(target, local_exercises[index]):
-            local = local_exercises[index]
-        if local is None:
+        non_empty_days = [day for day in week.days if _day_has_work(day)]
+        if not non_empty_days or len(non_empty_days) == len(week.days):
             continue
-
-        _copy_missing_prescription_fields(target, local)
+        week.days = non_empty_days
 
     return program
 
 
-def _flatten_program_exercises(program: TrainingProgram) -> list[ProgramExercise]:
-    exercises: list[ProgramExercise] = []
-    seen: set[int] = set()
+def _day_has_work(day) -> bool:
+    return any(block.exercises for block in day.blocks) or bool(day.exercises)
+
+
+def _drop_aggregate_exercise_rows(program: TrainingProgram) -> TrainingProgram:
+    """Remove OCR/LLM rows that glue adjacent exercise rows together."""
+
     for week in program.weeks:
         for day in week.days:
             for block in day.blocks:
-                for exercise in block.exercises:
-                    if id(exercise) not in seen:
-                        exercises.append(exercise)
-                        seen.add(id(exercise))
-            for exercise in day.exercises:
-                if id(exercise) not in seen:
-                    exercises.append(exercise)
-                    seen.add(id(exercise))
-    return exercises
+                block.exercises = _without_aggregate_exercises(block.exercises)
+            day.exercises = _without_aggregate_exercises(day.exercises)
+    return program
 
 
-def _has_missing_prescription(exercise: ProgramExercise) -> bool:
+def _without_aggregate_exercises(exercises: list[ProgramExercise]) -> list[ProgramExercise]:
+    if len(exercises) < 3:
+        return exercises
+
+    kept: list[ProgramExercise] = []
+    for index, exercise in enumerate(exercises):
+        siblings = exercises[:index] + exercises[index + 1 :]
+        if _is_aggregate_exercise(exercise, siblings):
+            continue
+        kept.append(exercise)
+    return kept
+
+
+def _is_aggregate_exercise(candidate: ProgramExercise, siblings: list[ProgramExercise]) -> bool:
+    candidate_name = _exercise_match_key(candidate)
+    if not candidate_name or len(candidate_name.split()) < 4:
+        return False
+    if not _has_weak_or_missing_prescription(candidate):
+        return False
+
+    sibling_phrases = [
+        phrase
+        for sibling in siblings
+        for phrase in _exercise_phrase_variants(sibling)
+        if phrase and phrase != candidate_name
+    ]
+    return _can_segment_phrase(candidate_name, sibling_phrases, min_segments=2)
+
+
+def _has_weak_or_missing_prescription(exercise: ProgramExercise) -> bool:
     return (
-        not exercise.rep_target
-        or not exercise.load_target
-        or exercise.rest_seconds is None
+        exercise.set_count <= 1
+        and not exercise.load_target
+        and exercise.rpe_target is None
+        and exercise.rest_seconds is None
     )
 
 
-def _pop_matching_local_exercise(
-    target: ProgramExercise,
-    local_by_name: dict[str, list[ProgramExercise]],
-) -> ProgramExercise | None:
-    key = _exercise_match_key(target)
-    matches = local_by_name.get(key)
-    if matches:
-        return matches.pop(0)
-
-    for candidate_key, candidates in local_by_name.items():
-        if candidates and _compatible_name_keys(key, candidate_key):
-            return candidates.pop(0)
-    return None
+def _exercise_phrase_variants(exercise: ProgramExercise) -> set[str]:
+    name = _exercise_match_key(exercise)
+    phrases = {name} if name else set()
+    reps = str(exercise.rep_target or "").strip()
+    if reps and re.fullmatch(r"\d{1,3}", reps):
+        phrases.add(_normalize_phrase(f"{reps} {name}"))
+    return phrases
 
 
-def _copy_missing_prescription_fields(target: ProgramExercise, local: ProgramExercise) -> None:
-    if target.set_count <= 1 and local.set_count > 1:
-        target.set_count = local.set_count
-    if not target.rep_target and local.rep_target:
-        target.rep_target = local.rep_target
-        _remove_ambiguity_flag(target, "missing_rep_target")
-    if not target.load_target and local.load_target:
-        target.load_target = local.load_target
-        _remove_ambiguity_flag(target, "missing_intensity_target")
-    if target.rpe_target is None and local.rpe_target is not None:
-        target.rpe_target = local.rpe_target
-        _remove_ambiguity_flag(target, "missing_intensity_target")
-    if target.rest_seconds is None and local.rest_seconds is not None:
-        target.rest_seconds = local.rest_seconds
+def _can_segment_phrase(value: str, phrases: list[str], *, min_segments: int) -> bool:
+    phrase_set = set(phrases)
 
-
-def _remove_ambiguity_flag(exercise: ProgramExercise, flag: str) -> None:
-    exercise.ambiguity_flags = [existing for existing in exercise.ambiguity_flags if existing != flag]
-
-
-def _compatible_names(target: ProgramExercise, local: ProgramExercise) -> bool:
-    return _compatible_name_keys(_exercise_match_key(target), _exercise_match_key(local))
-
-
-def _compatible_name_keys(left: str, right: str) -> bool:
-    if left == right:
-        return True
-    left_tokens = set(left.split())
-    right_tokens = set(right.split())
-    if not left_tokens or not right_tokens:
+    def can_segment(remaining: str, segment_count: int) -> bool:
+        if not remaining:
+            return segment_count >= min_segments
+        for phrase in phrase_set:
+            if remaining == phrase:
+                return segment_count + 1 >= min_segments
+            prefix = f"{phrase} "
+            if remaining.startswith(prefix) and can_segment(remaining[len(prefix) :], segment_count + 1):
+                return True
         return False
-    overlap = len(left_tokens & right_tokens)
-    return overlap >= min(len(left_tokens), len(right_tokens), 2)
+
+    return can_segment(value, 0)
 
 
 def _exercise_match_key(exercise: ProgramExercise) -> str:
     name = exercise.display_name or exercise.exercise_id
-    key = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+    return _normalize_phrase(name)
+
+
+def _normalize_phrase(value: str) -> str:
+    key = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
     return re.sub(r"\s+", " ", key)
 
 
@@ -252,6 +217,6 @@ def extract_program_file(path: str | Path):
     """Expose raw extracted document output for review or downstream LLM use."""
 
     try:
-        return extract_document_text(path)
+        return extract_document_text(path, include_structured_data=True)
     except ValueError as exc:
         raise UnsupportedProgramSourceError(str(exc)) from exc

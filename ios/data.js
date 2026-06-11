@@ -592,6 +592,44 @@
     };
   }
 
+  async function completeWorkoutExercise(sessionId, { exerciseName, programId = null, currentExerciseName = null } = {}) {
+    if (!sessionId) throw new Error('Start a workout before finishing exercises.');
+    const resolvedExercise = resolvePlannedExerciseName(programId, exerciseName || currentExerciseName);
+    const cleanExerciseName = String(resolvedExercise || exerciseName || currentExerciseName || '').trim();
+    if (!cleanExerciseName) throw new Error('I do not know which exercise to finish.');
+
+    const { data: authData, error: authError } = await client().auth.getUser();
+    throwIfError(authError);
+    if (!authData.user) throw new Error('Sign in before finishing exercises.');
+
+    const logsRes = await client()
+      .from('workout_exercise_logs')
+      .select('id,exercise_number,exercise_name')
+      .eq('session_id', sessionId)
+      .order('exercise_number');
+    throwIfError(logsRes.error);
+
+    const logs = logsRes.data || [];
+    const existing = logs.find((item) => normalizeName(item.exercise_name) === normalizeName(cleanExerciseName));
+    if (existing) return existing;
+
+    const nextExerciseNumber = logs.reduce((max, item) => Math.max(max, Number(item.exercise_number || 0)), 0) + 1;
+    const insertedLog = await client()
+      .from('workout_exercise_logs')
+      .insert({
+        session_id: sessionId,
+        exercise_number: nextExerciseNumber,
+        exercise_name: cleanExerciseName,
+        notes: 'Completed by voice command.',
+      })
+      .select('id,exercise_number,exercise_name,notes')
+      .single();
+    throwIfError(insertedLog.error);
+
+    await loadTrainarData(authData.user.id);
+    return insertedLog.data;
+  }
+
   function resolvePlannedExerciseName(programId, exerciseName) {
     const query = normalizeName(exerciseName);
     if (!query) return null;
@@ -935,6 +973,7 @@
     finishWorkout,
     deleteWorkoutSession,
     logWorkoutSet,
+    completeWorkoutExercise,
     selectPastWorkout,
     getProgramDetail,
     upsertTrainarProgramCache,

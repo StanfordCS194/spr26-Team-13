@@ -1133,6 +1133,14 @@ def _build_workout_summary(
     for log in logs:
         log_sets = sets_by_log.get(str(log.get("id")), [])
         if not log_sets:
+            exercise_summaries.append({
+                "name": str(log.get("exercise_name") or "Unknown"),
+                "sets": 0,
+                "best_weight": None,
+                "best_reps": None,
+                "estimated_1rm": None,
+                "volume": 0,
+            })
             continue
         total_sets += len(log_sets)
         ex_volume = sum(
@@ -1199,7 +1207,11 @@ def _build_workout_summary(
     # Build the spoken summary message
     n_exercises = len(exercise_summaries)
     parts: list[str] = []
-    if n_exercises == 1:
+    if total_sets == 0 and n_exercises == 1:
+        parts.append(f"Workout done — {exercise_summaries[0]['name']} completed.")
+    elif total_sets == 0:
+        parts.append(f"Workout done! {n_exercises} exercises completed.")
+    elif n_exercises == 1:
         parts.append(f"Workout done — {total_sets} sets of {exercise_summaries[0]['name']}.")
     else:
         parts.append(f"Workout done! {n_exercises} exercises, {total_sets} sets.")
@@ -1290,12 +1302,28 @@ def _skip_exercise(
             "ui_patch": None,
         }
 
+    completed_exercise_name = normalize_exercise_name(action.exercise_name) or action.exercise_name or _current_step_name(context)
+    completed_log = None
+    if finished and completed_exercise_name:
+        program_exercise = _find_program_exercise(
+            client,
+            _active_program_id(context),
+            completed_exercise_name,
+            day_id=_active_day_id(context),
+        )
+        completed_log = _get_or_create_exercise_log(
+            client,
+            session_id=session_id,
+            exercise_name=str((program_exercise or {}).get("exercise_name") or completed_exercise_name),
+            program_exercise=program_exercise,
+        )
+
     step = _next_exercise_step(client, program_id=_active_program_id(context), day_id=_active_day_id(context), context=context)
     if step is None:
         return {
             "ok": True,
             "message": "That was the last planned exercise.",
-            "action_result": None,
+            "action_result": {"completed_exercise_log": completed_log} if completed_log else None,
             "ui_patch": {"type": "workout_step_updated", "sessionId": session_id, "step": None},
         }
 
@@ -1303,7 +1331,7 @@ def _skip_exercise(
     return {
         "ok": True,
         "message": f"{verb}. Next up is {step.get('exerciseName')}, set 1 of {step.get('setCount') or 1}.",
-        "action_result": step,
+        "action_result": {**step, "completedExerciseLog": completed_log} if completed_log else step,
         "ui_patch": {
             "type": "workout_step_updated",
             "sessionId": session_id,

@@ -48,6 +48,7 @@ def extract_document_text(
         return ExtractedDocument(
             text=file_path.read_text(encoding="utf-8"),
             source_type=SourceType.TEXT,
+            source_path=str(file_path),
         )
 
     if suffix in DOCLING_SUFFIXES:
@@ -80,6 +81,7 @@ def _extract_with_docling(path: Path, *, include_structured_data: bool) -> Extra
         extraction_notes=extraction_notes,
         structured_markdown=markdown,
         structured_data=structured_data,
+        source_path=str(path),
     )
 
 

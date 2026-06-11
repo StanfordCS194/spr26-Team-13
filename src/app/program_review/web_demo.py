@@ -69,7 +69,7 @@ def create_app() -> Flask:
             if not upload or not upload.filename:
                 raise ValueError("Upload an image or document to process.")
 
-            program, extracted_preview = _ingest_uploaded_file(upload, user_id)
+            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=True)
             return _render_demo(
                 program=program,
                 extracted_preview=extracted_preview,
@@ -89,7 +89,7 @@ def create_app() -> Flask:
             if not upload or not upload.filename:
                 raise ValueError("Upload an image or document to process.")
 
-            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=False, use_cache=True)
+            program, extracted_preview = _ingest_uploaded_file(upload, user_id, require_llm=True, use_cache=True)
             return jsonify(
                 {
                     "program": program.model_dump(mode="json"),
@@ -271,7 +271,7 @@ def _build_cache_key(path: Path, *, user_id: str, title: str) -> str:
             "file_sha256": digest.hexdigest(),
             "user_id": user_id,
             "title": title,
-            "version": 2,
+            "version": 3,
         },
         sort_keys=True,
     )

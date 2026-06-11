@@ -18,8 +18,6 @@ const HomeScreen = ({
   onOpenProgram,
   onActivate,
   onFinish,
-  glassesConnected = true,
-  glassesBattery = 78,
   loadedToGlasses = false,
   activeProgramId = null,
 }) => {
@@ -36,13 +34,12 @@ const HomeScreen = ({
 
   return (
     <Screen padTop={56} padBottom={120}>
-      {/* Header — title + glasses pill */}
+      {/* Header */}
       <div style={{
         padding: '0 20px 18px',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
       }}>
         <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: -0.5 }}>Train</div>
-        <GlassesPill connected={glassesConnected} battery={glassesBattery || 78} />
       </div>
 
       {/* Add program CTA — disabled while a workout is active. */}

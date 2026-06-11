@@ -622,60 +622,59 @@ def test_program_review_demo_shows_unassigned_exercises_when_blocks_exist(monkey
             structured_markdown="Day 1\nBench Press - 3x5 @ 135 lb\nBlock 1\nBack Squat - 3x5 @ 185 lb",
         ),
     )
+    monkeypatch.setattr("src.app.program_review.web_demo.llm_normalization_available", lambda: True)
+    monkeypatch.setattr("src.app.program_review.web_demo.get_llm_provider", lambda: "gemini")
     monkeypatch.setattr(
-        "src.app.program_review.web_demo.normalize_extracted_program",
-        lambda *_args, **_kwargs: (
-            TrainingProgram(
-                program_id="program-1",
-                user_id="demo-user",
-                title="Upload",
-                source_type=SourceType.IMAGE,
-                weeks=[
-                    TrainingWeek(
-                        week_number=1,
-                        days=[
-                            TrainingDay(
-                                day_id="day-1",
-                                title="Day 1",
-                                blocks=[
-                                    TrainingBlock(
-                                        block_id="block-1",
-                                        title="Block 1",
-                                        execution_style=BlockExecutionStyle.ROUND_ROBIN,
-                                        exercises=[
-                                            ProgramExercise(
-                                                exercise_id="back_squat",
-                                                display_name="Back Squat",
-                                                set_count=3,
-                                                rep_target="5",
-                                                load_target="185 lb",
-                                            )
-                                        ],
-                                    )
-                                ],
-                                exercises=[
-                                    ProgramExercise(
-                                        exercise_id="back_squat",
-                                        display_name="Back Squat",
-                                        set_count=3,
-                                        rep_target="5",
-                                        load_target="185 lb",
-                                    ),
-                                    ProgramExercise(
-                                        exercise_id="bench_press",
-                                        display_name="Bench Press",
-                                        set_count=3,
-                                        rep_target="5",
-                                        load_target="135 lb",
-                                    ),
-                                ],
-                            )
-                        ],
-                    )
-                ],
-                needs_user_confirmation=False,
-            ),
-            "gemini",
+        "src.app.program_review.web_demo.normalize_document_with_llm",
+        lambda *_args, **_kwargs: TrainingProgram(
+            program_id="program-1",
+            user_id="demo-user",
+            title="Upload",
+            source_type=SourceType.IMAGE,
+            weeks=[
+                TrainingWeek(
+                    week_number=1,
+                    days=[
+                        TrainingDay(
+                            day_id="day-1",
+                            title="Day 1",
+                            blocks=[
+                                TrainingBlock(
+                                    block_id="block-1",
+                                    title="Block 1",
+                                    execution_style=BlockExecutionStyle.ROUND_ROBIN,
+                                    exercises=[
+                                        ProgramExercise(
+                                            exercise_id="back_squat",
+                                            display_name="Back Squat",
+                                            set_count=3,
+                                            rep_target="5",
+                                            load_target="185 lb",
+                                        )
+                                    ],
+                                )
+                            ],
+                            exercises=[
+                                ProgramExercise(
+                                    exercise_id="back_squat",
+                                    display_name="Back Squat",
+                                    set_count=3,
+                                    rep_target="5",
+                                    load_target="185 lb",
+                                ),
+                                ProgramExercise(
+                                    exercise_id="bench_press",
+                                    display_name="Bench Press",
+                                    set_count=3,
+                                    rep_target="5",
+                                    load_target="135 lb",
+                                ),
+                            ],
+                        )
+                    ],
+                )
+            ],
+            needs_user_confirmation=False,
         ),
     )
 
