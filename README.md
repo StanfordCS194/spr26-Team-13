@@ -10,6 +10,9 @@ parallel without drifting on schemas.
 - `docs/team-plan.md`
 - `docs/api-contracts.md`
 - `docs/architecture.md`
+- `docs/implementation-history.md`
+- `ios/README.md` for the browser iOS prototype
+- `native-ios/README.md` for the Xcode/native iOS shell
 
 ## Recommended setup
 
@@ -38,16 +41,34 @@ conda activate team13
 pip install -r requirements.txt
 ```
 
-## Run the starter app
+## Run the local app
+
+The Flask demo server powers the desktop review flow, iOS browser prototype,
+coach chat routes, and native iOS shell during local development.
+
+For the browser/iOS prototype parser flow:
 
 ```bash
-python src/main.py
+python -m src.main --demo --host 127.0.0.1 --port 5001
 ```
+
+Then open `http://127.0.0.1:5001/ios/`.
+
+For the native Xcode shell on the iOS Simulator:
+
+```bash
+python -m src.main --demo --host 127.0.0.1 --port 5002
+```
+
+For a physical iPhone, run the server with `--host 0.0.0.0` and update the
+LAN IP in `native-ios/TrainAR/TrainAR/Info.plist` before launching from Xcode.
+See `native-ios/README.md` for the exact `TRAINAR_WEB_URL`, `ChatEndpointURL`,
+and `NSAppTransportSecurity` steps.
 
 ## Run tests
 
 ```bash
-pytest
+python -m pytest
 ```
 
 ## Environment variables
@@ -70,6 +91,17 @@ Do not commit `.env`.
 - `src/glasses/`: display demo, audio, controls
 - `src/app/`: summary, history, review flows
 - `src/export/`: external logging/export
+- `ios/`: browser-based iOS prototype
+- `native-ios/`: Xcode shell wrapping the web app and native bridges
 - `tests/fixtures/`: example payloads for team-wide testing
+
+## Documentation expectations
+
+- Keep feature behavior documented near the subsystem README.
+- Use PR descriptions and `docs/implementation-history.md` for historical
+  commit/PR context instead of creating retroactive issues for already-merged
+  work.
+- Use GitHub issues for active bugs, follow-ups, or remaining implementation
+  tasks.
 
 Charlie Abowd

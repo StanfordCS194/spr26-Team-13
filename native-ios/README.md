@@ -22,20 +22,56 @@ Meta glasses -> Meta AI permissions/session -> native iOS shell -> TrainAR web U
 1. Open `native-ios/TrainAR/TrainAR.xcodeproj` in Xcode.
 2. Select the `TrainAR` target.
 3. In **Signing & Capabilities**, select your team.
-4. Start the Python demo server from the repo root:
+4. Start the Python demo server from the repo root.
+
+   For the iOS Simulator:
 
    ```bash
    python -m src.main --demo --host 127.0.0.1 --port 5002
    ```
 
-5. Run the app in the iOS Simulator.
+   For a physical iPhone on the same Wi-Fi as your Mac, bind Flask to all
+   interfaces so the phone can reach it:
 
-The default web URL is `http://127.0.0.1:5002/ios/`, which works in the
-Simulator. On a physical iPhone, `127.0.0.1` points at the phone itself, so set
-`TRAINAR_WEB_URL` in `TrainAR/Info.plist` to either:
+   ```bash
+   python -m src.main --demo --host 0.0.0.0 --port 5002
+   ```
 
-- a LAN URL for your Mac, for example `http://192.168.1.20:5002/ios/`
-- a deployed HTTPS URL, for example Vercel
+5. Configure `TrainAR/Info.plist` before running on a physical iPhone.
+
+   The default web URL, `http://127.0.0.1:5002/ios/`, only works in the
+   Simulator. On a physical iPhone, `127.0.0.1` points at the phone itself.
+   Find your Mac's current LAN IP:
+
+   ```bash
+   ipconfig getifaddr en0
+   ```
+
+   Update both local endpoints to use that IP:
+
+   ```xml
+   <key>TRAINAR_WEB_URL</key>
+   <string>http://YOUR_MAC_IP:5002/ios/</string>
+   <key>ChatEndpointURL</key>
+   <string>http://YOUR_MAC_IP:5002/api/chat</string>
+   ```
+
+   Also add `YOUR_MAC_IP` under `NSAppTransportSecurity` ->
+   `NSExceptionDomains`, matching the existing localhost/IP entries, so iOS
+   allows local HTTP during development.
+
+6. Run the app from Xcode.
+
+   If the phone cannot connect, confirm:
+
+   - the Mac and iPhone are on the same network
+   - the server is running with `--host 0.0.0.0`
+   - `TRAINAR_WEB_URL` and `ChatEndpointURL` use the same current Mac IP
+   - the IP is present in `NSExceptionDomains`
+   - iOS local-network permission was accepted
+
+   On networks that isolate devices, use an HTTPS tunnel such as ngrok and set
+   `TRAINAR_WEB_URL` / `ChatEndpointURL` to the tunnel URL instead.
 
 ## Bridge contract
 
